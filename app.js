@@ -2,13 +2,13 @@
 // ❤️ CONFIGURATION - CUSTOMIZE YOURSurprise HERE!
 // =========================================================================
 const CONFIG = {
-    partnerName: "My Love",             // Your girlfriend's name (displays in heading/letter)
-    yourName: "Yash",                 // Your name (signature on the letter)
+    partnerName: "Mukku",               // Your girlfriend's name (displays in heading/letter)
+    yourName: "Yash",                   // Your name (signature on the letter)
     passcode: "2603",                   // The secret code to unlock the private page (e.g. your anniversary date)
 
     // LDR Settings
     yourLocation: "Lucknow",            // Where you live
-    partnerLocation: "Sahar",  // Where she lives
+    partnerLocation: "Sahar",           // Where she lives
     distanceText: "126 km",             // Distance between you two
     relationshipStartDate: "2026-03-27", // YYYY-MM-DD - When you guys started dating
     nextMeetDate: "2026-09-27",         // YYYY-MM-DD - Next time you'll see each other (set to empty "" to hide countdown)
@@ -222,20 +222,8 @@ if (passcodeInput) {
 // 4. PANIC BUTTON & ESCAPE KEY (SAFETY LOCK)
 // =========================================================================
 const panicBtn = document.getElementById("panic-btn");
-const loveBgMusic = document.getElementById("love-bg-music");
-const playSvg = document.getElementById("music-play-svg");
-const pauseSvg = document.getElementById("music-pause-svg");
 
 function triggerPanicLock() {
-    // 1. Instantly stop music silently
-    if (loveBgMusic) {
-        loveBgMusic.pause();
-    }
-    if (playSvg && pauseSvg) {
-        playSvg.classList.remove("hide");
-        pauseSvg.classList.add("hide");
-    }
-
     // 2. Hide love container & show disguise container
     loveContainer.classList.add("hide");
     loveContainer.classList.remove("fade-in");
@@ -262,42 +250,12 @@ window.addEventListener("keydown", (e) => {
 });
 
 // =========================================================================
-// 5. MUSIC CONTROLLER (Earphone Safety Hint)
-// =========================================================================
-const loveMusicToggle = document.getElementById("love-music-toggle");
-
-if (loveMusicToggle && loveBgMusic) {
-    loveMusicToggle.addEventListener("click", () => {
-        if (loveBgMusic.paused) {
-            loveBgMusic.play().then(() => {
-                playSvg.classList.add("hide");
-                pauseSvg.classList.remove("hide");
-            }).catch(err => {
-                console.log("Music play blocked", err);
-            });
-        } else {
-            loveBgMusic.pause();
-            playSvg.classList.remove("hide");
-            pauseSvg.classList.add("hide");
-        }
-    });
-}
-
-// =========================================================================
 // 6. HEARTFELT LETTER INJECTION
 // =========================================================================
 function initializeSurpriseContent() {
     // Heading
     const loveHeading = document.getElementById("love-heading");
-    if (loveHeading) loveHeading.textContent = `Happy Girlfriend's Day, ${CONFIG.partnerName} ❤️`;
-
-    // Clocks header
-    const locYourName = document.getElementById("loc-your-name");
-    const locPartnerName = document.getElementById("loc-partner-name");
-    const distanceVal = document.getElementById("distance-val");
-    if (locYourName) locYourName.textContent = CONFIG.yourLocation;
-    if (locPartnerName) locPartnerName.textContent = CONFIG.partnerLocation;
-    if (distanceVal) distanceVal.textContent = CONFIG.distanceText;
+    if (loveHeading) loveHeading.textContent = `Happy Girlfriend's Day, ${CONFIG.partnerName} 🐱💖`;
 
     // Letter signatures
     const signName = document.getElementById("sign-name");
