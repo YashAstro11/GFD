@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyFlow - Focus Workspace</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <!-- Main Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- DISGUISE / SAFE MODE CONTAINER -->
+    <div id="disguise-container" class="disguise-container">
+        <header class="disguise-header">
+            <div class="logo">
+                <span class="logo-icon">📚</span>
+                <span class="logo-text">StudyFlow</span>
+            </div>
+            <!-- Lock Button disguised as Private Notes lock -->
+            <button id="private-lock-btn" class="private-lock-btn" aria-label="Unlock Private Notes" title="Private Notes">
+                <svg viewBox="0 0 24 24" class="lock-svg">
+                    <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+                </svg>
+            </button>
+        </header>
+
+        <main class="disguise-main">
+            <!-- Pomodoro Timer Card -->
+            <div class="disguise-card timer-card">
+                <h2 class="card-title">Focus Session</h2>
+                <div class="timer-display" id="timer-display">25:00</div>
+                <div class="timer-controls">
+                    <button id="timer-start" class="d-btn btn-success">Start</button>
+                    <button id="timer-reset" class="d-btn btn-secondary">Reset</button>
+                </div>
+                <div class="timer-modes">
+                    <button class="mode-btn active" data-time="1500">Pomodoro</button>
+                    <button class="mode-btn" data-time="300">Short Break</button>
+                    <button class="mode-btn" data-time="900">Long Break</button>
+                </div>
+            </div>
+
+            <!-- Task Tracker Card -->
+            <div class="disguise-card tasks-card">
+                <h2 class="card-title">Today's Academic Tasks</h2>
+                <ul id="task-list" class="task-list">
+                    <li>
+                        <label class="task-item">
+                            <input type="checkbox">
+                            <span class="task-text">Revise notes and formulas</span>
+                        </label>
+                    </li>
+                    <li>
+                        <label class="task-item">
+                            <input type="checkbox">
+                            <span class="task-text">Solve practice assignment questions</span>
+                        </label>
+                    </li>
+                    <li>
+                        <label class="task-item">
+                            <input type="checkbox">
+                            <span class="task-text">Read textbook summary chapter</span>
+                        </label>
+                    </li>
+                </ul>
+                <div class="add-task-form">
+                    <input type="text" id="new-task-input" placeholder="Add custom study task..." aria-label="New task description">
+                    <button id="add-task-btn" class="d-btn btn-primary" aria-label="Add task">+</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="disguise-footer">
+            <p>StudyFlow Workspace &copy; 2026. Plan. Focus. Achieve.</p>
+        </footer>
+
+        <!-- Passcode Modal Disguised as Notes Unlock -->
+        <div id="passcode-modal" class="modal-overlay hide">
+            <div class="modal-card">
+                <h3 class="modal-title">Enter Private Vault Passcode</h3>
+                <p class="modal-hint">Enter your personal access code to view stored journal logs.</p>
+                <div class="passcode-input-wrapper">
+                    <input type="password" id="passcode-input" maxlength="10" placeholder="••••" autocomplete="off">
+                    <button id="verify-passcode-btn" class="d-btn btn-primary">Verify</button>
+                </div>
+                <p id="passcode-error" class="error-text hide">Incorrect passcode. Please try again.</p>
+                <button id="close-passcode-btn" class="close-text-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOVE SPACE / SURPRISE CONTAINER (Hidden initially) -->
+    <div id="love-container" class="love-container hide">
+        
+        <!-- Panic Escape Button -->
+        <button id="panic-btn" class="panic-btn" title="Quick Disguise (Esc)">
+            <span class="panic-icon">🔒</span> Quick Lock
+        </button>
+
+        <header class="love-header">
+            <h1 class="love-title" id="love-heading">Happy Girlfriend's Day, My Love 🐱💖</h1>
+            <p class="love-subtitle">Our quiet little space, safe from the world.</p>
+        </header>
+
+        <main class="love-main">
+
+
+
+
+            <!-- Heartfelt Letter Card -->
+            <section class="love-card letter-card">
+                <div class="letter-seal">💌 Private Letter</div>
+                <div class="letter-scrollable">
+                    <h2 class="cursive-letter-title">My Dearest,</h2>
+                    <div id="letter-paragraphs">
+                        <!-- Filled in from CONFIG in app.js -->
+                    </div>
+                    <p class="letter-sign-off">Tumhara,<br><span class="letter-signature" id="sign-name">Yash</span></p>
+                </div>
+            </section>
+
+            <!-- Love Tap Interactive Card -->
+            <section class="love-card interactive-card">
+                <h2 class="card-section-title">Send a Little Love</h2>
+                <p class="card-desc">Tap a button below to instantly show me you're thinking of me. Each tap will float a sweet icon across your screen! ✨</p>
+                <div class="tap-buttons">
+                    <button class="tap-btn" data-emoji="😽" data-name="Hug">
+                        <span class="emoji">😽</span> Send Hug
+                        <span class="count-badge" id="count-hug">0</span>
+                    </button>
+                    <button class="tap-btn" data-emoji="😻" data-name="Heart">
+                        <span class="emoji">😻</span> Send Heart
+                        <span class="count-badge" id="count-heart">0</span>
+                    </button>
+                    <button class="tap-btn" data-emoji="🐾" data-name="Kiss">
+                        <span class="emoji">🐾</span> Send Purr
+                        <span class="count-badge" id="count-kiss">0</span>
+                    </button>
+                    <button class="tap-btn" data-emoji="😿" data-name="Miss">
+                        <span class="emoji">😿</span> Miss You
+                        <span class="count-badge" id="count-miss">0</span>
+                    </button>
+                </div>
+                <div id="wa-notify-container" class="wa-notify-container hide">
+                    <a id="wa-notify-link" href="#" target="_blank" class="d-btn btn-wa">
+                        Notify Yash on WhatsApp 💬
+                    </a>
+                </div>
+            </section>
+
+
+        </main>
+
+        <footer class="love-footer">
+            <p>I love you to the moon and back. 🌙</p>
+            <p class="love-footer-sub">&copy; 2026. Made with endless love for my special one.</p>
+        </footer>
+    </div>
+
+    <!-- Floating Emojis Container -->
+    <div id="floating-emojis-container" class="floating-emojis-container"></div>
+
+    <!-- Main JavaScript Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
