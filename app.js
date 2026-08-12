@@ -25,10 +25,7 @@ const CONFIG = {
 };
 
 // =========================================================================
-// 1. DUAL TIME CLOCKS & COUNTERS
-// =========================================================================
-// =========================================================================
-// 2. DISGUISE PAGE - FOCUS TIMER & TASKS
+// 1. DISGUISE PAGE - FOCUS TIMER & TASKS
 // =========================================================================
 let timerInterval = null;
 let timerSeconds = 1500; // 25 minutes
@@ -42,7 +39,11 @@ const modeBtns = document.querySelectorAll(".mode-btn");
 function updateTimerDisplay() {
     const mins = Math.floor(timerSeconds / 60).toString().padStart(2, '0');
     const secs = (timerSeconds % 60).toString().padStart(2, '0');
-    timerDisplay.textContent = `${mins}:${secs}`;
+    const timeStr = `${mins}:${secs}`;
+    timerDisplay.textContent = timeStr;
+    
+    // Update the document title to show timer progress
+    document.title = timerRunning ? `(${timeStr}) StudyFlow - Focus` : "StudyFlow - Focus Workspace";
 }
 
 function startTimer() {
@@ -52,6 +53,7 @@ function startTimer() {
         timerStartBtn.classList.remove("btn-warning");
         timerStartBtn.classList.add("btn-success");
         timerRunning = false;
+        updateTimerDisplay();
     } else {
         timerInterval = setInterval(() => {
             if (timerSeconds > 0) {
@@ -62,12 +64,16 @@ function startTimer() {
                 playTimerAlarm();
                 timerRunning = false;
                 timerStartBtn.textContent = "Start";
+                timerStartBtn.classList.remove("btn-warning");
+                timerStartBtn.classList.add("btn-success");
+                updateTimerDisplay();
             }
         }, 1000);
         timerStartBtn.textContent = "Pause";
         timerStartBtn.classList.remove("btn-success");
         timerStartBtn.classList.add("btn-warning");
         timerRunning = true;
+        updateTimerDisplay();
     }
 }
 
@@ -121,18 +127,54 @@ const addTaskBtn = document.getElementById("add-task-btn");
 const newTaskInput = document.getElementById("new-task-input");
 const taskList = document.getElementById("task-list");
 
+let tasks = JSON.parse(localStorage.getItem('studyflow_tasks')) || [
+    { text: "Revise notes and formulas", done: false },
+    { text: "Solve practice assignment questions", done: false },
+    { text: "Read textbook summary chapter", done: false }
+];
+
+function renderTasks() {
+    taskList.innerHTML = "";
+    tasks.forEach((task, index) => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+            <div class="task-item">
+                <label class="task-label">
+                    <input type="checkbox" ${task.done ? 'checked' : ''} onchange="toggleTask(${index})">
+                    <span class="task-text ${task.done ? 'completed' : ''}">${escapeHTML(task.text)}</span>
+                </label>
+                <button class="delete-task-btn" onclick="deleteTask(${index})" aria-label="Delete task" title="Delete Task">&times;</button>
+            </div>
+        `;
+        taskList.appendChild(li);
+    });
+}
+
+window.toggleTask = function(index) {
+    tasks[index].done = !tasks[index].done;
+    saveTasks();
+    renderTasks();
+};
+
+window.deleteTask = function(index) {
+    tasks.splice(index, 1);
+    saveTasks();
+    renderTasks();
+};
+
+function saveTasks() {
+    localStorage.setItem('studyflow_tasks', JSON.stringify(tasks));
+}
+
 if (addTaskBtn && newTaskInput && taskList) {
+    renderTasks();
+
     addTaskBtn.addEventListener("click", () => {
         const text = newTaskInput.value.trim();
         if (text) {
-            const li = document.createElement("li");
-            li.innerHTML = `
-                <label class="task-item">
-                    <input type="checkbox">
-                    <span class="task-text">${escapeHTML(text)}</span>
-                </label>
-            `;
-            taskList.appendChild(li);
+            tasks.push({ text: text, done: false });
+            saveTasks();
+            renderTasks();
             newTaskInput.value = "";
         }
     });
@@ -189,9 +231,6 @@ function verifyPasscode() {
             disguiseContainer.classList.add("hide");
             loveContainer.classList.remove("hide");
             loveContainer.classList.add("fade-in");
-
-            // Trigger clocks check immediately
-            updateClocksAndCounters();
         }, 400);
     } else {
         // Incorrect passcode
@@ -414,6 +453,5 @@ function playTapTone(type) {
 // Run initialization on DOM load
 document.addEventListener("DOMContentLoaded", () => {
     initializeSurpriseContent();
-    updateClocksAndCounters();
     updateTimerDisplay();
 });

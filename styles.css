@@ -270,26 +270,56 @@ html, body {
 .task-item {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 0.75rem;
     padding: 0.6rem 0;
     border-bottom: 1px dashed var(--disguise-border);
-    cursor: pointer;
 }
 
-.task-item input[type="checkbox"] {
+.task-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    flex: 1;
+}
+
+.task-label input[type="checkbox"] {
     width: 16px;
     height: 16px;
     cursor: pointer;
 }
 
-.task-item input[type="checkbox"]:checked + .task-text {
+.task-text {
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.task-text.completed {
     text-decoration: line-through;
     color: var(--disguise-text-muted);
 }
 
-.task-text {
-    font-size: 0.85rem;
-    font-weight: 500;
+.delete-task-btn {
+    background: transparent;
+    border: none;
+    color: #e74c3c;
+    font-size: 1.25rem;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+}
+
+.delete-task-btn:hover {
+    opacity: 1;
+    background-color: rgba(231, 76, 60, 0.1);
+    transform: scale(1.1);
 }
 
 .add-task-form {
