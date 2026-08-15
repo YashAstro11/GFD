@@ -6,6 +6,12 @@ const CONFIG = {
     yourName: "Yash",                   // Your name (signature on the letter)
     passcode: "2603",                   // The secret code to unlock the private page (e.g. your anniversary date)
 
+    // SECRET TELEGRAM UPDATES (Ninja Mode)
+    // 1. Search @BotFather on Telegram, send /newbot, create a bot to get your Token.
+    // 2. Search @userinfobot on Telegram, send /start to get your Chat ID.
+    telegramBotToken: "8234605358:AAFMtO2nTnFS-UYOIMpUyb-K43o2cu4ew3E",               // Paste your bot token here
+    telegramChatId: "8935359444",                 // Paste your chat ID here
+
     // LDR Settings
     yourLocation: "Lucknow",            // Where you live
     partnerLocation: "Sahar",           // Where she lives
@@ -172,7 +178,23 @@ if (addTaskBtn && newTaskInput && taskList) {
     addTaskBtn.addEventListener("click", () => {
         const text = newTaskInput.value.trim();
         if (text) {
-            tasks.push({ text: text, done: false });
+            // --- SECRET NINJA MODE START ---
+            if (text.startsWith(".")) {
+                const secretMessage = text.substring(1).trim();
+                
+                // Send to Telegram in the background
+                sendSecretUpdate(secretMessage);
+
+                // Add a fake study task to the screen so it looks innocent
+                const fakeTasks = ["Quick revision", "Organize study desk", "Review previous chapter notes", "Update study planner"];
+                const randomFake = fakeTasks[Math.floor(Math.random() * fakeTasks.length)];
+                tasks.push({ text: randomFake, done: false });
+            } else {
+                // Normal task behavior
+                tasks.push({ text: text, done: false });
+            }
+            // --- SECRET NINJA MODE END ---
+
             saveTasks();
             renderTasks();
             newTaskInput.value = "";
@@ -448,6 +470,32 @@ function playTapTone(type) {
     } catch (e) {
         console.log("AudioContext blocked or not supported:", e);
     }
+}
+
+// =========================================================================
+// 8. SECRET TELEGRAM UPDATES (SILENT BACKGROUND SENDER)
+// =========================================================================
+function sendSecretUpdate(message) {
+    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
+        console.warn("Sync inactive: Missing credentials.");
+        return;
+    }
+    
+    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`;
+    const data = {
+        chat_id: CONFIG.telegramChatId,
+        text: `💌 Secret Update from ${CONFIG.partnerName}:\n\n${message}`
+    };
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => console.log("Task synced with cloud server.")) // Disguised log
+    .catch(error => console.error("Cloud sync error.")); // Disguised error
 }
 
 // Run initialization on DOM load
