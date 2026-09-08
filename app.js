@@ -246,6 +246,10 @@ function verifyPasscode() {
         // Correct passcode! Transition to Love Space
         closeUnlockModal();
 
+        // Clear unread count since she is viewing the secret vault
+        localStorage.setItem('studyflow_unread_count', "0");
+        updateUnreadIndicator();
+
         // Add fade out to disguise, then show love container
         disguiseContainer.classList.add("fade-out");
 
@@ -253,6 +257,8 @@ function verifyPasscode() {
             disguiseContainer.classList.add("hide");
             loveContainer.classList.remove("hide");
             loveContainer.classList.add("fade-in");
+            renderSecretChat();
+            checkTelegramReplies(); // Fresh check
         }, 400);
     } else {
         // Incorrect passcode
@@ -295,6 +301,9 @@ function triggerPanicLock() {
     // 3. Clear any sensitive data
     passcodeInput.value = "";
     closeUnlockModal();
+
+    // Check if new unread indicator should show in disguise mode
+    updateUnreadIndicator();
 }
 
 // Click panic button or press "Escape" on keyboard
@@ -473,9 +482,109 @@ function playTapTone(type) {
 }
 
 // =========================================================================
-// 8. SECRET TELEGRAM UPDATES (SILENT BACKGROUND SENDER)
+// 8. TWO-WAY SECRET TELEGRAM MESSAGING & STEALTH UPDATES
 // =========================================================================
+const secretChatContainer = document.getElementById("secret-chat-messages");
+const secretReplyInput = document.getElementById("secret-reply-input");
+const secretSendBtn = document.getElementById("secret-send-btn");
+const clearChatBtn = document.getElementById("clear-chat-btn");
+const unreadDot = document.getElementById("unread-dot");
+
+function getChatHistory() {
+    try {
+        return JSON.parse(localStorage.getItem('studyflow_chat_history')) || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveChatMessage(msg) {
+    const history = getChatHistory();
+    if (!history.some(m => m.id === msg.id)) {
+        history.push(msg);
+        localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+    }
+    renderSecretChat();
+}
+
+function formatTime(timestamp) {
+    if (!timestamp) return "";
+    const d = new Date(timestamp);
+    let hours = d.getHours();
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return `${hours}:${minutes} ${ampm}`;
+}
+
+function renderSecretChat() {
+    if (!secretChatContainer) return;
+    const history = getChatHistory();
+
+    if (history.length === 0) {
+        secretChatContainer.innerHTML = `
+            <div class="chat-empty-state">
+                <span>💌</span>
+                <p>No messages yet.</p>
+                <p style="font-size:0.75rem; opacity:0.75; margin-top:0.35rem;">
+                    When ${CONFIG.partnerName} adds a task with "." or types below, it goes to ${CONFIG.yourName}'s Telegram.<br>
+                    ${CONFIG.yourName}'s Telegram replies will show up right here!
+                </p>
+            </div>
+        `;
+        return;
+    }
+
+    secretChatContainer.innerHTML = "";
+    history.forEach(msg => {
+        const row = document.createElement("div");
+        row.className = `chat-bubble-row ${msg.isPartner ? 'partner' : 'mine'}`;
+        
+        const senderLabel = msg.isPartner ? `${CONFIG.yourName} 👑` : `${CONFIG.partnerName} 🐱`;
+        
+        row.innerHTML = `
+            <span class="chat-sender-name">${escapeHTML(senderLabel)}</span>
+            <div class="chat-bubble">
+                ${escapeHTML(msg.text)}
+            </div>
+            <span class="chat-timestamp">${formatTime(msg.timestamp)}</span>
+        `;
+        secretChatContainer.appendChild(row);
+    });
+
+    // Auto-scroll to bottom of chat
+    secretChatContainer.scrollTop = secretChatContainer.scrollHeight;
+}
+
+function updateUnreadIndicator() {
+    const unreadCount = parseInt(localStorage.getItem('studyflow_unread_count') || "0");
+    const isLoveOpen = loveContainer && !loveContainer.classList.contains("hide");
+
+    if (unreadDot) {
+        if (unreadCount > 0 && !isLoveOpen) {
+            unreadDot.classList.remove("hide");
+            if (privateLockBtn) privateLockBtn.setAttribute("title", `Private Notes (${unreadCount} unread)`);
+        } else {
+            unreadDot.classList.add("hide");
+            if (privateLockBtn) privateLockBtn.setAttribute("title", "Private Notes");
+        }
+    }
+}
+
 function sendSecretUpdate(message) {
+    if (!message || !message.trim()) return;
+    const cleanMsg = message.trim();
+
+    // 1. Record Mukku's message into local chat history
+    saveChatMessage({
+        id: 'msg_' + Date.now(),
+        sender: CONFIG.partnerName,
+        text: cleanMsg,
+        timestamp: Date.now(),
+        isPartner: false
+    });
+
     if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
         console.warn("Sync inactive: Missing credentials.");
         return;
@@ -484,7 +593,7 @@ function sendSecretUpdate(message) {
     const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`;
     const data = {
         chat_id: CONFIG.telegramChatId,
-        text: `💌 Secret Update from ${CONFIG.partnerName}:\n\n${message}`
+        text: `💌 Secret Update from ${CONFIG.partnerName}:\n\n${cleanMsg}`
     };
 
     fetch(url, {
@@ -494,12 +603,122 @@ function sendSecretUpdate(message) {
         },
         body: JSON.stringify(data)
     })
-    .then(response => console.log("Task synced with cloud server.")) // Disguised log
+    .then(response => {
+        console.log("Task synced with cloud server."); // Disguised log
+        // Check for any quick replies shortly after sending
+        setTimeout(checkTelegramReplies, 1500);
+    })
     .catch(error => console.error("Cloud sync error.")); // Disguised error
+}
+
+let isCheckingReplies = false;
+
+function checkTelegramReplies() {
+    if (isCheckingReplies) return;
+    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) return;
+
+    let lastOffset = parseInt(localStorage.getItem('studyflow_last_offset') || "0");
+    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/getUpdates?offset=${lastOffset}`;
+
+    isCheckingReplies = true;
+    fetch(url)
+        .then(res => res.json())
+        .then(data => {
+            if (data.ok && Array.isArray(data.result) && data.result.length > 0) {
+                let newPartnerMessages = 0;
+                let maxUpdateId = lastOffset;
+                const history = getChatHistory();
+
+                data.result.forEach(update => {
+                    if (update.update_id >= maxUpdateId) {
+                        maxUpdateId = update.update_id + 1;
+                    }
+
+                    // Strict Security: Only accept messages from Yash's Telegram Chat ID
+                    const msg = update.message;
+                    if (msg && String(msg.chat && msg.chat.id) === String(CONFIG.telegramChatId)) {
+                        const text = msg.text ? msg.text.trim() : "";
+                        // Ignore standard bot commands like /start
+                        if (text && !text.startsWith("/")) {
+                            const newMsgId = 't_' + update.update_id;
+                            if (!history.some(m => m.id === newMsgId)) {
+                                history.push({
+                                    id: newMsgId,
+                                    sender: CONFIG.yourName,
+                                    text: text,
+                                    timestamp: (msg.date ? msg.date * 1000 : Date.now()),
+                                    isPartner: true
+                                });
+                                newPartnerMessages++;
+                            }
+                        }
+                    }
+                });
+
+                // Persist updated offset and history
+                localStorage.setItem('studyflow_last_offset', maxUpdateId);
+                localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+
+                if (newPartnerMessages > 0) {
+                    const isLoveOpen = loveContainer && !loveContainer.classList.contains("hide");
+                    if (!isLoveOpen) {
+                        let currentUnread = parseInt(localStorage.getItem('studyflow_unread_count') || "0");
+                        currentUnread += newPartnerMessages;
+                        localStorage.setItem('studyflow_unread_count', currentUnread);
+                        updateUnreadIndicator();
+                    } else {
+                        renderSecretChat();
+                    }
+                }
+            }
+        })
+        .catch(err => {
+            // Disguised silent background catch
+            console.log("Sync heartbeat check.");
+        })
+        .finally(() => {
+            isCheckingReplies = false;
+        });
+}
+
+// Secret chat input listeners in Love Space
+if (secretSendBtn && secretReplyInput) {
+    const handleSecretSend = () => {
+        const text = secretReplyInput.value.trim();
+        if (text) {
+            sendSecretUpdate(text);
+            secretReplyInput.value = "";
+        }
+    };
+    secretSendBtn.addEventListener("click", handleSecretSend);
+    secretReplyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            handleSecretSend();
+        }
+    });
+}
+
+if (clearChatBtn) {
+    clearChatBtn.addEventListener("click", () => {
+        if (confirm("Are you sure you want to clear your secret chat messages?")) {
+            localStorage.setItem('studyflow_chat_history', JSON.stringify([]));
+            localStorage.setItem('studyflow_unread_count', "0");
+            updateUnreadIndicator();
+            renderSecretChat();
+        }
+    });
 }
 
 // Run initialization on DOM load
 document.addEventListener("DOMContentLoaded", () => {
     initializeSurpriseContent();
     updateTimerDisplay();
+    updateUnreadIndicator();
+    renderSecretChat();
+
+    // Check Telegram for replies immediately on page load
+    checkTelegramReplies();
+
+    // Poll periodically every 10 seconds for real-time replies
+    setInterval(checkTelegramReplies, 10000);
 });

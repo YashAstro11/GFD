@@ -111,6 +111,7 @@ html, body {
 
 /* Discreet private lock button */
 .private-lock-btn {
+    position: relative;
     background: transparent;
     border: none;
     cursor: pointer;
@@ -122,6 +123,31 @@ html, body {
     justify-content: center;
     align-items: center;
     transition: all 0.2s ease;
+}
+
+.unread-dot {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 9px;
+    height: 9px;
+    background: #ff477e;
+    border-radius: 50%;
+    border: 2px solid var(--disguise-card-bg);
+    box-shadow: 0 0 6px rgba(255, 71, 126, 0.8);
+    animation: stealthPulse 2s infinite ease-in-out;
+}
+
+@keyframes stealthPulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.9;
+    }
+    50% {
+        transform: scale(1.35);
+        opacity: 1;
+        box-shadow: 0 0 10px rgba(255, 71, 126, 1);
+    }
 }
 
 .private-lock-btn:hover {
@@ -603,6 +629,217 @@ html, body {
 .letter-scrollable::-webkit-scrollbar-thumb {
     background: rgba(224, 168, 153, 0.3);
     border-radius: 2px;
+}
+
+/* =========================================================================
+   SECRET TELEGRAM CHAT CARD
+   ========================================================================= */
+.secret-chat-card {
+    padding: 1.75rem;
+    position: relative;
+    border: 1px solid rgba(167, 139, 250, 0.3);
+    box-shadow: 0 8px 32px 0 rgba(167, 139, 250, 0.15);
+}
+
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+}
+
+.chat-header-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.chat-icon {
+    font-size: 1.8rem;
+    background: rgba(255, 133, 162, 0.15);
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #a78bfa;
+    background: rgba(167, 139, 250, 0.12);
+    padding: 0.15rem 0.55rem;
+    border-radius: 20px;
+    margin-top: 0.2rem;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #2ecc71;
+    box-shadow: 0 0 6px #2ecc71;
+}
+
+.clear-chat-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--love-text-muted);
+    font-size: 0.75rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: var(--font-body);
+}
+
+.clear-chat-btn:hover {
+    background: rgba(231, 76, 60, 0.2);
+    border-color: rgba(231, 76, 60, 0.4);
+    color: #ff85a2;
+}
+
+.chat-messages-container {
+    max-height: 320px;
+    min-height: 140px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin-bottom: 1.25rem;
+}
+
+.chat-messages-container::-webkit-scrollbar {
+    width: 4px;
+}
+.chat-messages-container::-webkit-scrollbar-thumb {
+    background: rgba(167, 139, 250, 0.3);
+    border-radius: 4px;
+}
+
+.chat-bubble-row {
+    display: flex;
+    flex-direction: column;
+    max-width: 80%;
+}
+
+.chat-bubble-row.mine {
+    align-self: flex-end;
+    align-items: flex-end;
+}
+
+.chat-bubble-row.partner {
+    align-self: flex-start;
+    align-items: flex-start;
+}
+
+.chat-sender-name {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--love-text-muted);
+    margin-bottom: 0.2rem;
+    padding: 0 0.3rem;
+}
+
+.chat-bubble {
+    padding: 0.7rem 1.05rem;
+    border-radius: 16px;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    word-break: break-word;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.chat-bubble-row.mine .chat-bubble {
+    background: linear-gradient(135deg, #f472b6 0%, #ec4899 100%);
+    color: #ffffff;
+    border-bottom-right-radius: 4px;
+}
+
+.chat-bubble-row.partner .chat-bubble {
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    color: #ffffff;
+    border-bottom-left-radius: 4px;
+    border: 1px solid rgba(196, 181, 253, 0.3);
+}
+
+.chat-timestamp {
+    font-size: 0.65rem;
+    opacity: 0.75;
+    margin-top: 0.25rem;
+    padding: 0 0.3rem;
+    color: var(--love-text-muted);
+}
+
+.chat-empty-state {
+    text-align: center;
+    padding: 2.5rem 1rem;
+    color: var(--love-text-muted);
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+.chat-empty-state span {
+    display: block;
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.chat-input-wrapper {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.chat-input-wrapper input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    color: var(--love-text-light);
+    font-size: 0.85rem;
+    font-family: var(--font-body);
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.chat-input-wrapper input:focus {
+    border-color: var(--love-rose-gold);
+    box-shadow: 0 0 12px var(--love-rose-gold-glow);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.chat-send-btn {
+    padding: 0.75rem 1.25rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 12px;
+    background: linear-gradient(45deg, var(--love-primary), var(--love-secondary));
+    border: none;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.chat-send-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px var(--love-primary-glow);
+}
+
+.send-svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
 }
 
 /* Interactive Love Tap Card */

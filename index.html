@@ -25,6 +25,7 @@
                 <svg viewBox="0 0 24 24" class="lock-svg">
                     <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
                 </svg>
+                <span id="unread-dot" class="unread-dot hide" title="New message available"></span>
             </button>
         </header>
 
@@ -103,6 +104,34 @@
                         <!-- Filled in from CONFIG in app.js -->
                     </div>
                     <p class="letter-sign-off">Tumhara,<br><span class="letter-signature" id="sign-name">Yash</span></p>
+                </div>
+            </section>
+ 
+            <!-- Secret Telegram Chat Card -->
+            <section class="love-card secret-chat-card">
+                <div class="chat-header">
+                    <div class="chat-header-title">
+                        <span class="chat-icon">💬</span>
+                        <div>
+                            <h2 class="card-section-title" style="margin:0; font-size:1.35rem;">Our Secret Telegram Chat</h2>
+                            <div class="chat-status-pill">
+                                <span class="status-dot"></span> Live Telegram Sync
+                            </div>
+                        </div>
+                    </div>
+                    <button id="clear-chat-btn" class="clear-chat-btn" title="Clear Chat History">Clear Chat</button>
+                </div>
+                
+                <div id="secret-chat-messages" class="chat-messages-container">
+                    <!-- Messages will be injected by JavaScript -->
+                </div>
+
+                <div class="chat-input-wrapper">
+                    <input type="text" id="secret-reply-input" placeholder="Type your secret message..." autocomplete="off">
+                    <button id="secret-send-btn" class="d-btn btn-primary chat-send-btn" aria-label="Send message">
+                        <span>Send</span>
+                        <svg viewBox="0 0 24 24" class="send-svg"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                    </button>
                 </div>
             </section>
 
