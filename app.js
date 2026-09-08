@@ -519,11 +519,12 @@ function formatTime(timestamp) {
 }
 
 function renderSecretChat() {
-    if (!secretChatContainer) return;
+    const container = secretChatContainer || document.getElementById("secret-chat-messages");
+    if (!container) return;
     const history = getChatHistory();
 
     if (history.length === 0) {
-        secretChatContainer.innerHTML = `
+        container.innerHTML = `
             <div class="chat-empty-state">
                 <span>💌</span>
                 <p>No messages yet.</p>
@@ -536,7 +537,7 @@ function renderSecretChat() {
         return;
     }
 
-    secretChatContainer.innerHTML = "";
+    container.innerHTML = "";
     history.forEach(msg => {
         const row = document.createElement("div");
         row.className = `chat-bubble-row ${msg.isPartner ? 'partner' : 'mine'}`;
@@ -550,24 +551,27 @@ function renderSecretChat() {
             </div>
             <span class="chat-timestamp">${formatTime(msg.timestamp)}</span>
         `;
-        secretChatContainer.appendChild(row);
+        container.appendChild(row);
     });
 
     // Auto-scroll to bottom of chat
-    secretChatContainer.scrollTop = secretChatContainer.scrollHeight;
+    container.scrollTop = container.scrollHeight;
 }
 
 function updateUnreadIndicator() {
     const unreadCount = parseInt(localStorage.getItem('studyflow_unread_count') || "0");
-    const isLoveOpen = loveContainer && !loveContainer.classList.contains("hide");
+    const love = loveContainer || document.getElementById("love-container");
+    const isLoveOpen = love && !love.classList.contains("hide");
+    const dot = unreadDot || document.getElementById("unread-dot");
+    const lockBtn = privateLockBtn || document.getElementById("private-lock-btn");
 
-    if (unreadDot) {
+    if (dot) {
         if (unreadCount > 0 && !isLoveOpen) {
-            unreadDot.classList.remove("hide");
-            if (privateLockBtn) privateLockBtn.setAttribute("title", `Private Notes (${unreadCount} unread)`);
+            dot.classList.remove("hide");
+            if (lockBtn) lockBtn.setAttribute("title", `Private Notes (${unreadCount} unread)`);
         } else {
-            unreadDot.classList.add("hide");
-            if (privateLockBtn) privateLockBtn.setAttribute("title", "Private Notes");
+            dot.classList.add("hide");
+            if (lockBtn) lockBtn.setAttribute("title", "Private Notes");
         }
     }
 }
@@ -709,16 +713,22 @@ if (clearChatBtn) {
     });
 }
 
-// Run initialization on DOM load
-document.addEventListener("DOMContentLoaded", () => {
+// Run initialization safely across all environments
+function initApp() {
     initializeSurpriseContent();
     updateTimerDisplay();
     updateUnreadIndicator();
     renderSecretChat();
 
-    // Check Telegram for replies immediately on page load
+    // Check Telegram for replies immediately on load
     checkTelegramReplies();
 
     // Poll periodically every 10 seconds for real-time replies
     setInterval(checkTelegramReplies, 10000);
-});
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initApp);
+} else {
+    initApp();
+}
