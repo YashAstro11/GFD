@@ -209,7 +209,8 @@ if (addTaskBtn && newTaskInput && taskList) {
 }
 
 function escapeHTML(str) {
-    return str.replace(/[&<>'"]/g,
+    if (!str && str !== 0) return "";
+    return String(str).replace(/[&<>'"]/g,
         tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
     );
 }
@@ -482,13 +483,91 @@ function playTapTone(type) {
 }
 
 // =========================================================================
-// 8. TWO-WAY SECRET TELEGRAM MESSAGING & STEALTH UPDATES
+// 8. TWO-WAY SECRET TELEGRAM MESSAGING & STICKER SYNC
 // =========================================================================
 const secretChatContainer = document.getElementById("secret-chat-messages");
 const secretReplyInput = document.getElementById("secret-reply-input");
 const secretSendBtn = document.getElementById("secret-send-btn");
 const clearChatBtn = document.getElementById("clear-chat-btn");
 const unreadDot = document.getElementById("unread-dot");
+
+// Curated Sticker Catalog
+const STICKER_CATALOG = {
+    cats: [
+        { name: "Mochi Hug", url: "https://media.giphy.com/media/MDJ9IbxxvDUQM/giphy.gif", emoji: "😻", isAnim: true },
+        { name: "Love Hearts", url: "https://media.giphy.com/media/vFKqnCdLPNOKc/giphy.gif", emoji: "🐱", isAnim: true },
+        { name: "Cat Cuddle", url: "https://media.giphy.com/media/l4pTdcifPZLpDjL1e/giphy.gif", emoji: "🐾", isAnim: true },
+        { name: "Cat Heart Eyes", url: "https://media.giphy.com/media/BzyTuYCmvSORqs1ABM/giphy.gif", emoji: "😻", isAnim: true },
+        { name: "Cute Peck Kiss", url: "https://media.giphy.com/media/G3va31oEEnIkM/giphy.gif", emoji: "😽", isAnim: true },
+        { name: "Cheek Kiss", url: "https://media.giphy.com/media/3oT0Fsr4bB1wK4m63e/giphy.gif", emoji: "😘", isAnim: true },
+        { name: "Cute Roll", url: "https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif", emoji: "😺", isAnim: true },
+        { name: "Happy Dance", url: "https://media.giphy.com/media/g5qEgeTM20WPm/giphy.gif", emoji: "💃", isAnim: true }
+    ],
+    love: [
+        { name: "Blowing Kiss", url: "https://media.giphy.com/media/11sBLVxNs7v6WA/giphy.gif", emoji: "💋", isAnim: true },
+        { name: "Love You Forever", url: "https://media.giphy.com/media/R6gVNROjBy4UM/giphy.gif", emoji: "💖", isAnim: true },
+        { name: "Warm Cuddle", url: "https://media.giphy.com/media/l2Je2M4Nfrit0L7sQ/giphy.gif", emoji: "🫂", isAnim: true },
+        { name: "Heart Pop", url: "https://media.giphy.com/media/26FLdmIp6wJr91JAI/giphy.gif", emoji: "💓", isAnim: true },
+        { name: "Sparkle Love", url: "https://media.giphy.com/media/l41JWw65TcBGjPpRK/giphy.gif", emoji: "✨", isAnim: true },
+        { name: "Couple Blanket", url: "https://media.giphy.com/media/26xBI73gWquCBBCDe/giphy.gif", emoji: "🥰", isAnim: true }
+    ],
+    bears: [
+        { name: "Bear Hug", url: "https://media.giphy.com/media/3oriO0OEd9QIDdllqo/giphy.gif", emoji: "🧸", isAnim: true },
+        { name: "Pouty Love", url: "https://media.giphy.com/media/3oEjI4sFlIE732SHEY/giphy.gif", emoji: "🥺", isAnim: true },
+        { name: "Warm Cuddle", url: "https://media.giphy.com/media/l2Je2M4Nfrit0L7sQ/giphy.gif", emoji: "🐻", isAnim: true },
+        { name: "Happy Dance", url: "https://media.giphy.com/media/g5qEgeTM20WPm/giphy.gif", emoji: "✨", isAnim: true }
+    ],
+    emojis: [
+        { name: "Love Cat", emoji: "😻", isEmoji: true },
+        { name: "Kiss Cat", emoji: "😽", isEmoji: true },
+        { name: "Heart Glow", emoji: "💖", isEmoji: true },
+        { name: "Pleading Eyes", emoji: "🥺", isEmoji: true },
+        { name: "Warm Hug", emoji: "🫂", isEmoji: true },
+        { name: "Sweet Kiss", emoji: "💋", isEmoji: true },
+        { name: "Red Rose", emoji: "🌹", isEmoji: true },
+        { name: "Diamond Ring", emoji: "💍", isEmoji: true },
+        { name: "Love Letter", emoji: "💌", isEmoji: true },
+        { name: "Cute Couple", emoji: "👩‍❤️‍💋‍👨", isEmoji: true },
+        { name: "Butterfly", emoji: "🦋", isEmoji: true },
+        { name: "Teddy Bear", emoji: "🧸", isEmoji: true }
+    ]
+};
+
+// In-memory cache for Telegram file URLs
+const telegramFileUrlCache = {};
+
+async function resolveTelegramFileUrl(fileId) {
+    if (!fileId || !CONFIG.telegramBotToken) return null;
+    if (telegramFileUrlCache[fileId]) return telegramFileUrlCache[fileId];
+
+    try {
+        const localCache = JSON.parse(localStorage.getItem('studyflow_file_cache') || '{}');
+        if (localCache[fileId]) {
+            telegramFileUrlCache[fileId] = localCache[fileId];
+            return localCache[fileId];
+        }
+    } catch (e) {}
+
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/getFile?file_id=${fileId}`);
+        const data = await res.json();
+        if (data.ok && data.result && data.result.file_path) {
+            const fileUrl = `https://api.telegram.org/file/bot${CONFIG.telegramBotToken}/${data.result.file_path}`;
+            telegramFileUrlCache[fileId] = fileUrl;
+            
+            try {
+                const localCache = JSON.parse(localStorage.getItem('studyflow_file_cache') || '{}');
+                localCache[fileId] = fileUrl;
+                localStorage.setItem('studyflow_file_cache', JSON.stringify(localCache));
+            } catch (e) {}
+
+            return fileUrl;
+        }
+    } catch (e) {
+        console.error("Failed to resolve Telegram file URL:", e);
+    }
+    return null;
+}
 
 function getChatHistory() {
     try {
@@ -529,8 +608,8 @@ function renderSecretChat() {
                 <span>💌</span>
                 <p>No messages yet.</p>
                 <p style="font-size:0.75rem; opacity:0.75; margin-top:0.35rem;">
-                    When ${CONFIG.partnerName} adds a task with "." or types below, it goes to ${CONFIG.yourName}'s Telegram.<br>
-                    ${CONFIG.yourName}'s Telegram replies will show up right here!
+                    When ${CONFIG.partnerName} types or sends stickers, it goes to ${CONFIG.yourName}'s Telegram.<br>
+                    ${CONFIG.yourName}'s Telegram replies and stickers will show up right here!
                 </p>
             </div>
         `;
@@ -544,11 +623,88 @@ function renderSecretChat() {
         
         const senderLabel = msg.isPartner ? `${CONFIG.yourName} 👑` : `${CONFIG.partnerName} 🐱`;
         
+        let bubbleContent = '';
+        if (msg.type === 'sticker') {
+            if (msg.stickerUrl) {
+                bubbleContent = `
+                    <div class="chat-bubble sticker-bubble">
+                        <img src="${escapeHTML(msg.stickerUrl)}" alt="${escapeHTML(msg.stickerEmoji || 'sticker')}" class="chat-sticker-img" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-block';">
+                        <span class="sticker-fallback-emoji" style="display:none;">${escapeHTML(msg.stickerEmoji || '💖')}</span>
+                    </div>
+                `;
+            } else if (msg.stickerEmoji && !msg.stickerFileId) {
+                bubbleContent = `
+                    <div class="chat-bubble sticker-bubble">
+                        <span class="sticker-fallback-emoji">${escapeHTML(msg.stickerEmoji)}</span>
+                    </div>
+                `;
+            } else {
+                bubbleContent = `
+                    <div class="chat-bubble sticker-bubble">
+                        <div class="sticker-loading-placeholder">
+                            <span class="sticker-fallback-emoji">${escapeHTML(msg.stickerEmoji || '✨')}</span>
+                            <span class="sticker-loading-spinner"></span>
+                        </div>
+                    </div>
+                `;
+                if (msg.stickerFileId) {
+                    resolveTelegramFileUrl(msg.stickerFileId).then(url => {
+                        if (url) {
+                            const curHistory = getChatHistory();
+                            const item = curHistory.find(m => m.id === msg.id);
+                            if (item) {
+                                item.stickerUrl = url;
+                                localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
+                                renderSecretChat();
+                            }
+                        }
+                    });
+                }
+            }
+        } else if (msg.type === 'photo') {
+            const captionHtml = msg.text ? `<div class="chat-media-caption">${escapeHTML(msg.text)}</div>` : '';
+            if (msg.stickerUrl) {
+                bubbleContent = `
+                    <div class="chat-bubble photo-bubble">
+                        <img src="${escapeHTML(msg.stickerUrl)}" alt="Photo" class="chat-sticker-img" loading="lazy">
+                        ${captionHtml}
+                    </div>
+                `;
+            } else {
+                bubbleContent = `
+                    <div class="chat-bubble photo-bubble">
+                        <div class="sticker-loading-placeholder">
+                            <span class="sticker-fallback-emoji">📷</span>
+                            <span class="sticker-loading-spinner"></span>
+                        </div>
+                        ${captionHtml}
+                    </div>
+                `;
+                if (msg.stickerFileId) {
+                    resolveTelegramFileUrl(msg.stickerFileId).then(url => {
+                        if (url) {
+                            const curHistory = getChatHistory();
+                            const item = curHistory.find(m => m.id === msg.id);
+                            if (item) {
+                                item.stickerUrl = url;
+                                localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
+                                renderSecretChat();
+                            }
+                        }
+                    });
+                }
+            }
+        } else {
+            bubbleContent = `
+                <div class="chat-bubble">
+                    ${escapeHTML(msg.text)}
+                </div>
+            `;
+        }
+
         row.innerHTML = `
             <span class="chat-sender-name">${escapeHTML(senderLabel)}</span>
-            <div class="chat-bubble">
-                ${escapeHTML(msg.text)}
-            </div>
+            ${bubbleContent}
             <span class="chat-timestamp">${formatTime(msg.timestamp)}</span>
         `;
         container.appendChild(row);
@@ -580,7 +736,7 @@ function sendSecretUpdate(message) {
     if (!message || !message.trim()) return;
     const cleanMsg = message.trim();
 
-    // 1. Record Mukku's message into local chat history
+    // Record Mukku's message into local chat history
     saveChatMessage({
         id: 'msg_' + Date.now(),
         sender: CONFIG.partnerName,
@@ -608,11 +764,161 @@ function sendSecretUpdate(message) {
         body: JSON.stringify(data)
     })
     .then(response => {
-        console.log("Task synced with cloud server."); // Disguised log
-        // Check for any quick replies shortly after sending
+        console.log("Task synced with cloud server.");
         setTimeout(checkTelegramReplies, 1500);
     })
-    .catch(error => console.error("Cloud sync error.")); // Disguised error
+    .catch(error => console.error("Cloud sync error."));
+}
+
+function sendSecretSticker(sticker) {
+    if (!sticker) return;
+
+    const isEmoji = sticker.isEmoji || !sticker.url;
+    const msgId = 'msg_stk_' + Date.now();
+    const newMsg = {
+        id: msgId,
+        sender: CONFIG.partnerName,
+        type: 'sticker',
+        stickerUrl: sticker.url || '',
+        stickerEmoji: sticker.emoji || '💖',
+        text: sticker.name || sticker.emoji || 'Sticker',
+        timestamp: Date.now(),
+        isPartner: false
+    };
+
+    saveChatMessage(newMsg);
+
+    // Audio chime feedback
+    playTapTone("Heart");
+
+    // Close sticker picker drawer
+    const picker = document.getElementById("chat-sticker-picker");
+    const toggleBtn = document.getElementById("chat-sticker-btn");
+    if (picker) picker.classList.add("hide");
+    if (toggleBtn) toggleBtn.classList.remove("active");
+
+    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
+        console.warn("Sync inactive: Missing credentials.");
+        return;
+    }
+
+    if (isEmoji) {
+        const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`;
+        const data = {
+            chat_id: CONFIG.telegramChatId,
+            text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji} ${sticker.name ? `(${sticker.name})` : ''}`
+        };
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).then(() => setTimeout(checkTelegramReplies, 1500)).catch(e => console.error("Cloud sync error."));
+    } else {
+        const endpoint = sticker.isAnim ? 'sendAnimation' : 'sendPhoto';
+        const paramKey = sticker.isAnim ? 'animation' : 'photo';
+        const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/${endpoint}`;
+        const data = {
+            chat_id: CONFIG.telegramChatId,
+            [paramKey]: sticker.url,
+            caption: `💌 Sticker from ${CONFIG.partnerName}: ${sticker.emoji || '💕'} ${sticker.name || ''}`
+        };
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(res => res.json())
+        .then(resData => {
+            if (!resData.ok) {
+                console.warn("Media send failed, falling back to message:", resData);
+                fetch(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: CONFIG.telegramChatId,
+                        text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji || '💖'} ${sticker.name || ''}\n${sticker.url}`
+                    })
+                });
+            }
+            setTimeout(checkTelegramReplies, 1500);
+        })
+        .catch(e => {
+            console.error("Cloud sync error.", e);
+        });
+    }
+}
+
+function initStickerPicker() {
+    const stickerBtn = document.getElementById("chat-sticker-btn");
+    const stickerPicker = document.getElementById("chat-sticker-picker");
+    const closeBtn = document.getElementById("close-sticker-picker-btn");
+    const stickerGrid = document.getElementById("sticker-grid");
+    const tabBtns = document.querySelectorAll(".sticker-tab-btn");
+
+    if (!stickerBtn || !stickerPicker || !stickerGrid) return;
+
+    let currentCategory = "cats";
+
+    function renderCategory(cat) {
+        currentCategory = cat;
+        const items = STICKER_CATALOG[cat] || [];
+        stickerGrid.innerHTML = "";
+
+        items.forEach(stk => {
+            const btn = document.createElement("button");
+            btn.className = "sticker-item";
+            btn.type = "button";
+            btn.title = stk.name;
+
+            if (stk.isEmoji) {
+                btn.innerHTML = `<span class="sticker-emoji-large">${stk.emoji}</span>`;
+            } else {
+                btn.innerHTML = `<img src="${stk.url}" alt="${stk.name}" class="sticker-thumb" loading="lazy">`;
+            }
+
+            btn.addEventListener("click", () => {
+                sendSecretSticker(stk);
+            });
+
+            stickerGrid.appendChild(btn);
+        });
+    }
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            tabBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            renderCategory(btn.getAttribute("data-category"));
+        });
+    });
+
+    stickerBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isHidden = stickerPicker.classList.contains("hide");
+        if (isHidden) {
+            renderCategory(currentCategory);
+            stickerPicker.classList.remove("hide");
+            stickerBtn.classList.add("active");
+        } else {
+            stickerPicker.classList.add("hide");
+            stickerBtn.classList.remove("active");
+        }
+    });
+
+    if (closeBtn) {
+        closeBtn.addEventListener("click", () => {
+            stickerPicker.classList.add("hide");
+            stickerBtn.classList.remove("active");
+        });
+    }
+
+    // Close when clicking outside of picker
+    document.addEventListener("click", (e) => {
+        if (!stickerPicker.contains(e.target) && !stickerBtn.contains(e.target)) {
+            stickerPicker.classList.add("hide");
+            stickerBtn.classList.remove("active");
+        }
+    });
 }
 
 let isCheckingReplies = false;
@@ -641,19 +947,115 @@ function checkTelegramReplies() {
                     // Strict Security: Only accept messages from Yash's Telegram Chat ID
                     const msg = update.message;
                     if (msg && String(msg.chat && msg.chat.id) === String(CONFIG.telegramChatId)) {
-                        const text = msg.text ? msg.text.trim() : "";
-                        // Ignore standard bot commands like /start
-                        if (text && !text.startsWith("/")) {
-                            const newMsgId = 't_' + update.update_id;
-                            if (!history.some(m => m.id === newMsgId)) {
-                                history.push({
+                        const newMsgId = 't_' + update.update_id;
+                        if (!history.some(m => m.id === newMsgId)) {
+                            const time = msg.date ? msg.date * 1000 : Date.now();
+
+                            if (msg.sticker) {
+                                // 1. Yash sent a Sticker
+                                const sticker = msg.sticker;
+                                const targetFileId = (sticker.is_animated || sticker.is_video) && (sticker.thumbnail || sticker.thumb)
+                                    ? (sticker.thumbnail || sticker.thumb).file_id
+                                    : sticker.file_id;
+
+                                const newMsg = {
                                     id: newMsgId,
                                     sender: CONFIG.yourName,
-                                    text: text,
-                                    timestamp: (msg.date ? msg.date * 1000 : Date.now()),
+                                    type: 'sticker',
+                                    stickerFileId: targetFileId,
+                                    stickerUrl: '',
+                                    stickerEmoji: sticker.emoji || "💖",
+                                    text: sticker.emoji || "Sticker",
+                                    timestamp: time,
                                     isPartner: true
-                                });
+                                };
+                                history.push(newMsg);
                                 newPartnerMessages++;
+
+                                if (targetFileId) {
+                                    resolveTelegramFileUrl(targetFileId).then(fileUrl => {
+                                        if (fileUrl) {
+                                            const curHistory = getChatHistory();
+                                            const item = curHistory.find(m => m.id === newMsgId);
+                                            if (item) {
+                                                item.stickerUrl = fileUrl;
+                                                localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
+                                                renderSecretChat();
+                                            }
+                                        }
+                                    });
+                                }
+                            } else if (msg.photo && msg.photo.length > 0) {
+                                // 2. Yash sent a Photo
+                                const photo = msg.photo[msg.photo.length - 1];
+                                const newMsg = {
+                                    id: newMsgId,
+                                    sender: CONFIG.yourName,
+                                    type: 'photo',
+                                    stickerFileId: photo.file_id,
+                                    stickerUrl: '',
+                                    text: msg.caption ? msg.caption.trim() : "",
+                                    timestamp: time,
+                                    isPartner: true
+                                };
+                                history.push(newMsg);
+                                newPartnerMessages++;
+
+                                resolveTelegramFileUrl(photo.file_id).then(fileUrl => {
+                                    if (fileUrl) {
+                                        const curHistory = getChatHistory();
+                                        const item = curHistory.find(m => m.id === newMsgId);
+                                        if (item) {
+                                            item.stickerUrl = fileUrl;
+                                            localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
+                                            renderSecretChat();
+                                        }
+                                    }
+                                });
+                            } else if (msg.animation) {
+                                // 3. Yash sent an Animation / GIF
+                                const anim = msg.animation;
+                                const targetFileId = (anim.thumbnail && anim.thumbnail.file_id) ? anim.thumbnail.file_id : anim.file_id;
+                                const newMsg = {
+                                    id: newMsgId,
+                                    sender: CONFIG.yourName,
+                                    type: 'sticker',
+                                    stickerFileId: targetFileId,
+                                    stickerUrl: '',
+                                    stickerEmoji: "✨",
+                                    text: msg.caption ? msg.caption.trim() : "GIF",
+                                    timestamp: time,
+                                    isPartner: true
+                                };
+                                history.push(newMsg);
+                                newPartnerMessages++;
+
+                                if (targetFileId) {
+                                    resolveTelegramFileUrl(targetFileId).then(fileUrl => {
+                                        if (fileUrl) {
+                                            const curHistory = getChatHistory();
+                                            const item = curHistory.find(m => m.id === newMsgId);
+                                            if (item) {
+                                                item.stickerUrl = fileUrl;
+                                                localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
+                                                renderSecretChat();
+                                            }
+                                        }
+                                    });
+                                }
+                            } else if (msg.text) {
+                                // 4. Yash sent a Text message
+                                const text = msg.text.trim();
+                                if (text && !text.startsWith("/")) {
+                                    history.push({
+                                        id: newMsgId,
+                                        sender: CONFIG.yourName,
+                                        text: text,
+                                        timestamp: time,
+                                        isPartner: true
+                                    });
+                                    newPartnerMessages++;
+                                }
                             }
                         }
                     }
@@ -677,7 +1079,6 @@ function checkTelegramReplies() {
             }
         })
         .catch(err => {
-            // Disguised silent background catch
             console.log("Sync heartbeat check.");
         })
         .finally(() => {
@@ -718,6 +1119,7 @@ function initApp() {
     initializeSurpriseContent();
     updateTimerDisplay();
     updateUnreadIndicator();
+    initStickerPicker();
     renderSecretChat();
 
     // Check Telegram for replies immediately on load

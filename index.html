@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <!-- Main Stylesheet -->
-    <link rel="stylesheet" href="styles.css?v=2.0">
+    <link rel="stylesheet" href="styles.css?v=2.1">
 </head>
 <body>
 
@@ -126,7 +126,27 @@
                     <!-- Messages will be injected by JavaScript -->
                 </div>
 
+                <!-- Sticker Drawer / Picker Container -->
+                <div id="chat-sticker-picker" class="chat-sticker-picker hide">
+                    <div class="sticker-picker-header">
+                        <span class="sticker-picker-title">💖 Send a Sticker</span>
+                        <button id="close-sticker-picker-btn" class="close-sticker-btn" title="Close" type="button">✕</button>
+                    </div>
+                    <div class="sticker-category-tabs">
+                        <button class="sticker-tab-btn active" data-category="cats" type="button">🐱 Cats</button>
+                        <button class="sticker-tab-btn" data-category="love" type="button">💖 Love</button>
+                        <button class="sticker-tab-btn" data-category="bears" type="button">🐻 Bears</button>
+                        <button class="sticker-tab-btn" data-category="emojis" type="button">✨ Emojis</button>
+                    </div>
+                    <div id="sticker-grid" class="sticker-grid">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
                 <div class="chat-input-wrapper">
+                    <button id="chat-sticker-btn" class="chat-sticker-toggle-btn" type="button" title="Send a Sticker" aria-label="Open Stickers">
+                        <span class="sticker-btn-icon">🥰</span>
+                    </button>
                     <input type="text" id="secret-reply-input" placeholder="Type your secret message..." autocomplete="off">
                     <button id="secret-send-btn" class="d-btn btn-primary chat-send-btn" aria-label="Send message">
                         <span>Send</span>
@@ -177,6 +197,6 @@
     <div id="floating-emojis-container" class="floating-emojis-container"></div>
 
     <!-- Main JavaScript Logic -->
-    <script src="app.js?v=2.0"></script>
+    <script src="app.js?v=2.1"></script>
 </body>
 </html>
