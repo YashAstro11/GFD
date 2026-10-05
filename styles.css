@@ -13,19 +13,19 @@
     --disguise-warning: #e67e22;
     --disguise-secondary: #95a5a6;
     
-    /* Love Space Palette - Midnight Cat Theme */
-    --love-bg: #1a1625;
-    --love-bg-gradient: linear-gradient(135deg, #1a1625 0%, #2b1b3d 50%, #1f1a2d 100%);
-    --love-primary: #ff85a2;
-    --love-primary-glow: rgba(255, 133, 162, 0.45);
-    --love-secondary: #a78bfa;
-    --love-rose-gold: #f472b6;
-    --love-rose-gold-glow: rgba(244, 114, 182, 0.25);
-    --love-text-light: #fef4f6;
-    --love-text-muted: #c4b5fd;
-    --love-glass-bg: rgba(45, 30, 60, 0.65);
-    --love-glass-border: rgba(255, 133, 162, 0.2);
-    --love-glass-glow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+    /* Love Space Palette - Now identical to Study Mode for stealth */
+    --love-bg: var(--disguise-bg);
+    --love-bg-gradient: none;
+    --love-primary: var(--disguise-primary);
+    --love-primary-glow: rgba(52, 152, 219, 0.2);
+    --love-secondary: var(--disguise-secondary);
+    --love-rose-gold: var(--disguise-primary);
+    --love-rose-gold-glow: rgba(52, 152, 219, 0.1);
+    --love-text-light: var(--disguise-text);
+    --love-text-muted: var(--disguise-text-muted);
+    --love-glass-bg: var(--disguise-card-bg);
+    --love-glass-border: var(--disguise-border);
+    --love-glass-glow: 0 4px 6px rgba(0,0,0,0.02), 0 1px 3px rgba(0,0,0,0.01);
     
     /* Fonts */
     --font-cursive: 'Great Vibes', cursive;
@@ -494,9 +494,9 @@ html, body {
     top: 20px;
     right: 20px;
     z-index: 1000;
-    background: rgba(231, 76, 60, 0.15);
-    border: 1px solid rgba(231, 76, 60, 0.4);
-    color: #ff6b6b;
+    background: var(--disguise-card-bg);
+    border: 1px solid var(--disguise-border);
+    color: var(--disguise-text);
     padding: 0.6rem 1.2rem;
     border-radius: 50px;
     font-weight: 600;
@@ -601,7 +601,7 @@ html, body {
     font-size: 0.88rem;
     line-height: 1.7;
     margin-bottom: 1.25rem;
-    color: #e2d9eb;
+    color: var(--disguise-text);
     text-align: justify;
 }
 
@@ -645,7 +645,7 @@ html, body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--disguise-border);
     padding-bottom: 1rem;
     margin-bottom: 1rem;
 }
@@ -690,7 +690,7 @@ html, body {
 
 .clear-chat-btn {
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid var(--disguise-border);
     color: var(--love-text-muted);
     font-size: 0.75rem;
     padding: 0.35rem 0.75rem;
@@ -759,16 +759,16 @@ html, body {
 }
 
 .chat-bubble-row.mine .chat-bubble {
-    background: linear-gradient(135deg, #f472b6 0%, #ec4899 100%);
+    background: var(--disguise-primary);
     color: #ffffff;
     border-bottom-right-radius: 4px;
 }
 
 .chat-bubble-row.partner .chat-bubble {
-    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
-    color: #ffffff;
+    background: #e2e8f0;
+    color: var(--disguise-text);
     border-bottom-left-radius: 4px;
-    border: 1px solid rgba(196, 181, 253, 0.3);
+    border: 1px solid var(--disguise-border);
 }
 
 .chat-timestamp {
@@ -800,8 +800,8 @@ html, body {
 
 .chat-input-wrapper input {
     flex: 1;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--disguise-card-bg);
+    border: 1px solid var(--disguise-border);
     border-radius: 12px;
     padding: 0.75rem 1rem;
     color: var(--love-text-light);
@@ -814,7 +814,7 @@ html, body {
 .chat-input-wrapper input:focus {
     border-color: var(--love-rose-gold);
     box-shadow: 0 0 12px var(--love-rose-gold-glow);
-    background: rgba(255, 255, 255, 0.08);
+    background: #f1f5f9;
 }
 
 .chat-send-btn {
@@ -823,7 +823,7 @@ html, body {
     align-items: center;
     gap: 0.4rem;
     border-radius: 12px;
-    background: linear-gradient(45deg, var(--love-primary), var(--love-secondary));
+    background: var(--disguise-primary);
     border: none;
     color: white;
     font-weight: 600;
@@ -848,8 +848,8 @@ html, body {
     width: 44px;
     height: 44px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.07);
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: var(--disguise-bg);
+    border: 1px solid var(--disguise-border);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -879,10 +879,10 @@ html, body {
 
 /* Sticker Drawer / Picker Container */
 .chat-sticker-picker {
-    background: rgba(26, 18, 40, 0.95);
+    background: var(--disguise-card-bg);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 133, 162, 0.3);
+    border: 1px solid var(--disguise-border);
     border-radius: 16px;
     padding: 0.85rem;
     margin-bottom: 0.75rem;
@@ -906,7 +906,7 @@ html, body {
     justify-content: space-between;
     align-items: center;
     padding-bottom: 0.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--disguise-border);
     margin-bottom: 0.6rem;
 }
 
@@ -930,7 +930,7 @@ html, body {
 
 .close-sticker-btn:hover {
     color: #ff6b6b;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--disguise-border);
 }
 
 .sticker-category-tabs {
@@ -950,8 +950,8 @@ html, body {
 }
 
 .sticker-tab-btn {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--disguise-bg);
+    border: 1px solid var(--disguise-border);
     color: var(--love-text-muted);
     padding: 0.25rem 0.65rem;
     border-radius: 20px;
@@ -994,8 +994,8 @@ html, body {
 }
 
 .sticker-item {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--disguise-bg);
+    border: 1px solid var(--disguise-border);
     border-radius: 12px;
     padding: 0.45rem;
     display: flex;
@@ -1050,7 +1050,7 @@ html, body {
 .chat-bubble.photo-bubble {
     background: rgba(0, 0, 0, 0.2) !important;
     padding: 0.4rem !important;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--disguise-border);
 }
 
 .chat-sticker-img {
@@ -1105,9 +1105,9 @@ html, body {
     justify-content: center;
     min-width: 90px;
     min-height: 90px;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--disguise-bg);
     border-radius: 14px;
-    border: 1px dashed rgba(255, 255, 255, 0.15);
+    border: 1px dashed var(--disguise-border);
     padding: 0.5rem;
 }
 
@@ -1148,11 +1148,11 @@ html, body {
 }
 
 .tap-btn {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--disguise-card-bg);
+    border: 1px solid var(--disguise-border);
     border-radius: 16px;
     padding: 1.25rem 0.5rem;
-    color: white;
+    color: var(--disguise-text);
     cursor: pointer;
     display: flex;
     flex-direction: column;
@@ -1182,12 +1182,12 @@ html, body {
 }
 
 .count-badge {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--disguise-bg);
     padding: 0.15rem 0.5rem;
     border-radius: 10px;
     font-size: 0.65rem;
-    color: var(--love-rose-gold);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--disguise-primary);
+    border: 1px solid var(--disguise-border);
 }
 
 .tap-btn:hover .count-badge {
