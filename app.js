@@ -713,6 +713,15 @@ function renderSecretChat() {
         
         bubbleContent = replyHtml + bubbleContent;
 
+        let editBtnHtml = '';
+        if (!msg.isPartner && msg.type !== 'sticker' && msg.type !== 'photo' && msg.telegramMessageId) {
+            editBtnHtml = `
+                <button onclick="initiateEdit('${msg.id}', '${msg.telegramMessageId}', \`${escapeHTML((msg.text || '').replace(/'/g, "\\'"))}\`)" style="background:transparent; border:none; color:var(--disguise-text-muted); cursor:pointer; font-size: 0.7rem; display:flex; align-items:center; gap:0.2rem;" title="Edit">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg> Edit
+                </button>
+            `;
+        }
+
         row.innerHTML = `
             <span class="chat-sender-name">${escapeHTML(senderLabel)}</span>
             ${bubbleContent}
@@ -721,6 +730,7 @@ function renderSecretChat() {
                 <button onclick="initiateReply('${msg.id}', '${msg.telegramMessageId || ''}', \`${escapeHTML((msg.text || 'Media').replace(/'/g, "\\'")).substring(0,30)}\`)" style="background:transparent; border:none; color:var(--disguise-text-muted); cursor:pointer; font-size: 0.7rem; display:flex; align-items:center; gap:0.2rem;" title="Reply">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-9v5c5 0 11 2 11 9-2-5-9-5-9-5v5z"/></svg> Reply
                 </button>
+                ${editBtnHtml}
             </div>
         `;
         container.appendChild(row);
@@ -800,6 +810,44 @@ function sendSecretUpdate(message) {
         setTimeout(checkTelegramReplies, 1500);
     })
     .catch(error => console.error("Cloud sync error."));
+}
+
+function sendSecretEdit(text) {
+    if (!text || !text.trim()) return;
+    const cleanMsg = text.trim();
+    if (!activeEditState || !activeEditState.telegramId) {
+        if (typeof cancelEdit !== 'undefined') cancelEdit();
+        return;
+    }
+
+    const history = getChatHistory();
+    const itemIndex = history.findIndex(m => m.id === activeEditState.localId);
+    if (itemIndex !== -1) {
+        history[itemIndex].text = cleanMsg;
+        localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+        renderSecretChat();
+    }
+
+    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
+        console.warn("Sync inactive: Missing credentials.");
+        if (typeof cancelEdit !== 'undefined') cancelEdit();
+        return;
+    }
+    
+    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/editMessageText`;
+    const data = {
+        chat_id: CONFIG.telegramChatId,
+        message_id: parseInt(activeEditState.telegramId),
+        text: `💌 Secret Update from ${CONFIG.partnerName}:\n\n${cleanMsg}`
+    };
+
+    fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).catch(error => console.error("Cloud edit error."));
+
+    if (typeof cancelEdit !== 'undefined') cancelEdit();
 }
 
 function sendSecretSticker(sticker) {
@@ -1020,6 +1068,20 @@ function checkTelegramReplies() {
 
                     // Strict Security: Only accept messages from Yash's Telegram Chat ID
                     const msg = update.message;
+                    const editedMsg = update.edited_message;
+                    
+                    if (editedMsg && String(editedMsg.chat && editedMsg.chat.id) === String(CONFIG.telegramChatId)) {
+                        const itemIndex = history.findIndex(m => m.telegramMessageId === editedMsg.message_id);
+                        if (itemIndex !== -1) {
+                            if (editedMsg.text) {
+                                history[itemIndex].text = editedMsg.text;
+                            } else if (editedMsg.caption) {
+                                history[itemIndex].text = editedMsg.caption;
+                            }
+                            newPartnerMessages++;
+                        }
+                    }
+
                     if (msg && String(msg.chat && msg.chat.id) === String(CONFIG.telegramChatId)) {
                         const newMsgId = 't_' + update.update_id;
                         if (!history.some(m => m.id === newMsgId)) {
@@ -1169,8 +1231,10 @@ function checkTelegramReplies() {
 }
 
 let activeReplyState = null;
+let activeEditState = null;
 
 window.initiateReply = function(localMsgId, telegramMsgId, textPreview) {
+    if (activeEditState) cancelEdit();
     activeReplyState = {
         localId: localMsgId,
         telegramId: telegramMsgId,
@@ -1189,7 +1253,34 @@ window.initiateReply = function(localMsgId, telegramMsgId, textPreview) {
 window.cancelReply = function() {
     activeReplyState = null;
     const replyBar = document.getElementById("active-reply-bar");
-    if (replyBar) replyBar.classList.add("hide");
+    if (replyBar && !activeEditState) replyBar.classList.add("hide");
+};
+
+window.initiateEdit = function(localMsgId, telegramMsgId, textToEdit) {
+    if (activeReplyState) cancelReply();
+    activeEditState = {
+        localId: localMsgId,
+        telegramId: telegramMsgId
+    };
+    const replyBar = document.getElementById("active-reply-bar");
+    const replyText = document.getElementById("active-reply-text");
+    if (replyBar && replyText) {
+        replyText.innerHTML = `<span style="color:var(--disguise-primary);">✏️ Editing message...</span>`;
+        replyBar.classList.remove("hide");
+    }
+    const input = document.getElementById("secret-reply-input");
+    if (input) {
+        input.value = textToEdit;
+        input.focus();
+    }
+};
+
+window.cancelEdit = function() {
+    activeEditState = null;
+    const replyBar = document.getElementById("active-reply-bar");
+    if (replyBar && !activeReplyState) replyBar.classList.add("hide");
+    const input = document.getElementById("secret-reply-input");
+    if (input) input.value = "";
 };
 
 // Secret chat input listeners in Love Space
@@ -1197,7 +1288,11 @@ if (secretSendBtn && secretReplyInput) {
     const handleSecretSend = () => {
         const text = secretReplyInput.value.trim();
         if (text) {
-            sendSecretUpdate(text);
+            if (activeEditState) {
+                sendSecretEdit(text);
+            } else {
+                sendSecretUpdate(text);
+            }
             secretReplyInput.value = "";
         }
     };
