@@ -776,7 +776,7 @@ function sendSecretUpdate(message) {
     };
 
     if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
-        data.reply_parameters = { message_id: parseInt(activeReplyState.telegramId) };
+        data.reply_to_message_id = parseInt(activeReplyState.telegramId);
     }
     if (typeof cancelReply !== 'undefined') cancelReply();
 
@@ -787,8 +787,16 @@ function sendSecretUpdate(message) {
         },
         body: JSON.stringify(data)
     })
-    .then(response => {
-        console.log("Task synced with cloud server.");
+    .then(response => response.json())
+    .then(data => {
+        if (data && data.ok && data.result && data.result.message_id) {
+            const history = getChatHistory();
+            const item = history.find(m => m.id === newMsg.id);
+            if (item) {
+                item.telegramMessageId = data.result.message_id;
+                localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+            }
+        }
         setTimeout(checkTelegramReplies, 1500);
     })
     .catch(error => console.error("Cloud sync error."));
@@ -834,14 +842,27 @@ function sendSecretSticker(sticker) {
             text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji} ${sticker.name ? '(' + sticker.name + ')' : ''}`
         };
         if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
-            data.reply_parameters = { message_id: parseInt(activeReplyState.telegramId) };
+            data.reply_to_message_id = parseInt(activeReplyState.telegramId);
         }
         if (typeof cancelReply !== 'undefined') cancelReply();
         fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
-        }).then(() => setTimeout(checkTelegramReplies, 1500)).catch(e => console.error("Cloud sync error."));
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.ok && data.result && data.result.message_id) {
+                const history = getChatHistory();
+                const item = history.find(m => m.id === newMsg.id);
+                if (item) {
+                    item.telegramMessageId = data.result.message_id;
+                    localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+                }
+            }
+            setTimeout(checkTelegramReplies, 1500);
+        })
+        .catch(e => console.error("Cloud sync error."));
     } else {
         const endpoint = sticker.isAnim ? 'sendAnimation' : 'sendPhoto';
         const paramKey = sticker.isAnim ? 'animation' : 'photo';
@@ -852,7 +873,7 @@ function sendSecretSticker(sticker) {
             caption: `💌 Sticker from ${CONFIG.partnerName}: ${sticker.emoji || '💕'} ${sticker.name || ''}`
         };
         if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
-            data.reply_parameters = { message_id: parseInt(activeReplyState.telegramId) };
+            data.reply_to_message_id = parseInt(activeReplyState.telegramId);
         }
         if (typeof cancelReply !== 'undefined') cancelReply();
         fetch(url, {
@@ -871,7 +892,27 @@ function sendSecretSticker(sticker) {
                         chat_id: CONFIG.telegramChatId,
                         text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji || '💖'} ${sticker.name || ''}\n${sticker.url}`
                     })
+                })
+                .then(r => r.json())
+                .then(rData => {
+                    if (rData && rData.ok && rData.result && rData.result.message_id) {
+                        const history = getChatHistory();
+                        const item = history.find(m => m.id === newMsg.id);
+                        if (item) {
+                            item.telegramMessageId = rData.result.message_id;
+                            localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+                        }
+                    }
                 });
+            } else {
+                if (resData && resData.ok && resData.result && resData.result.message_id) {
+                    const history = getChatHistory();
+                    const item = history.find(m => m.id === newMsg.id);
+                    if (item) {
+                        item.telegramMessageId = resData.result.message_id;
+                        localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+                    }
+                }
             }
             setTimeout(checkTelegramReplies, 1500);
         })
