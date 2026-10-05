@@ -991,7 +991,7 @@ function initStickerPicker() {
             return;
         }
         stickerGrid.innerHTML = `<div style="padding: 1rem; color: var(--disguise-text-muted); text-align: center; width: 100%;">Searching...</div>`;
-        const url = `https://api.giphy.com/v1/gifs/search?api_key=GlVGYHqc3SyCEwfabFwO31N9v3U6j0xX&q=${encodeURIComponent(query)}&limit=24&rating=pg-13`;
+        const url = `https://api.giphy.com/v1/gifs/search?api_key=3eFQvabDx69SMoOemSPiYfh9FY0nzO9x&q=${encodeURIComponent(query)}&limit=24&rating=pg-13`;
         fetch(url)
             .then(res => res.json())
             .then(data => {
