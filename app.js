@@ -623,6 +623,15 @@ function renderSecretChat() {
         
         const senderLabel = msg.isPartner ? `${CONFIG.yourName} 👑` : `${CONFIG.partnerName} 🐱`;
         
+        let replyHtml = '';
+        if (msg.replyTo) {
+            replyHtml = `
+                <div style="font-size: 0.7rem; color: var(--disguise-text-muted); background: rgba(0,0,0,0.04); padding: 0.25rem 0.5rem; border-radius: 4px; margin-bottom: 0.25rem; border-left: 2px solid var(--disguise-primary); display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <span style="margin-right:0.25rem;">↩️</span>${escapeHTML(msg.replyTo.text)}
+                </div>
+            `;
+        }
+        
         let bubbleContent = '';
         if (msg.type === 'sticker') {
             if (msg.stickerUrl) {
@@ -701,11 +710,18 @@ function renderSecretChat() {
                 </div>
             `;
         }
+        
+        bubbleContent = replyHtml + bubbleContent;
 
         row.innerHTML = `
             <span class="chat-sender-name">${escapeHTML(senderLabel)}</span>
             ${bubbleContent}
-            <span class="chat-timestamp">${formatTime(msg.timestamp)}</span>
+            <div style="display:flex; align-items:center; gap: 0.5rem; margin-top: 0.25rem;">
+                <span class="chat-timestamp">${formatTime(msg.timestamp)}</span>
+                <button onclick="initiateReply('${msg.id}', '${msg.telegramMessageId || ''}', \`${escapeHTML((msg.text || 'Media').replace(/'/g, "\\'")).substring(0,30)}\`)" style="background:transparent; border:none; color:var(--disguise-text-muted); cursor:pointer; font-size: 0.7rem; display:flex; align-items:center; gap:0.2rem;" title="Reply">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-9v5c5 0 11 2 11 9-2-5-9-5-9-5v5z"/></svg> Reply
+                </button>
+            </div>
         `;
         container.appendChild(row);
     });
@@ -737,16 +753,19 @@ function sendSecretUpdate(message) {
     const cleanMsg = message.trim();
 
     // Record Mukku's message into local chat history
-    saveChatMessage({
+    const newMsg = {
         id: 'msg_' + Date.now(),
         sender: CONFIG.partnerName,
         text: cleanMsg,
         timestamp: Date.now(),
-        isPartner: false
-    });
+        isPartner: false,
+        replyTo: typeof activeReplyState !== 'undefined' && activeReplyState ? { text: activeReplyState.text } : null
+    };
+    saveChatMessage(newMsg);
 
     if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
         console.warn("Sync inactive: Missing credentials.");
+        if (typeof cancelReply !== 'undefined') cancelReply();
         return;
     }
     
@@ -755,6 +774,11 @@ function sendSecretUpdate(message) {
         chat_id: CONFIG.telegramChatId,
         text: `💌 Secret Update from ${CONFIG.partnerName}:\n\n${cleanMsg}`
     };
+
+    if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
+        data.reply_parameters = { message_id: parseInt(activeReplyState.telegramId) };
+    }
+    if (typeof cancelReply !== 'undefined') cancelReply();
 
     fetch(url, {
         method: 'POST',
@@ -783,7 +807,8 @@ function sendSecretSticker(sticker) {
         stickerEmoji: sticker.emoji || '💖',
         text: sticker.name || sticker.emoji || 'Sticker',
         timestamp: Date.now(),
-        isPartner: false
+        isPartner: false,
+        replyTo: typeof activeReplyState !== 'undefined' && activeReplyState ? { text: activeReplyState.text } : null
     };
 
     saveChatMessage(newMsg);
@@ -806,8 +831,12 @@ function sendSecretSticker(sticker) {
         const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`;
         const data = {
             chat_id: CONFIG.telegramChatId,
-            text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji} ${sticker.name ? `(${sticker.name})` : ''}`
+            text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji} ${sticker.name ? \`(\${sticker.name})\` : ''}`
         };
+        if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
+            data.reply_parameters = { message_id: parseInt(activeReplyState.telegramId) };
+        }
+        if (typeof cancelReply !== 'undefined') cancelReply();
         fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -822,6 +851,10 @@ function sendSecretSticker(sticker) {
             [paramKey]: sticker.url,
             caption: `💌 Sticker from ${CONFIG.partnerName}: ${sticker.emoji || '💕'} ${sticker.name || ''}`
         };
+        if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
+            data.reply_parameters = { message_id: parseInt(activeReplyState.telegramId) };
+        }
+        if (typeof cancelReply !== 'undefined') cancelReply();
         fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -960,6 +993,8 @@ function checkTelegramReplies() {
 
                                 const newMsg = {
                                     id: newMsgId,
+                                    telegramMessageId: msg.message_id,
+                                    replyTo: msg.reply_to_message ? { text: msg.reply_to_message.text || 'Media' } : null,
                                     sender: CONFIG.yourName,
                                     type: 'sticker',
                                     stickerFileId: targetFileId,
@@ -990,6 +1025,8 @@ function checkTelegramReplies() {
                                 const photo = msg.photo[msg.photo.length - 1];
                                 const newMsg = {
                                     id: newMsgId,
+                                    telegramMessageId: msg.message_id,
+                                    replyTo: msg.reply_to_message ? { text: msg.reply_to_message.text || msg.reply_to_message.caption || 'Photo' } : null,
                                     sender: CONFIG.yourName,
                                     type: 'photo',
                                     stickerFileId: photo.file_id,
@@ -1018,6 +1055,8 @@ function checkTelegramReplies() {
                                 const targetFileId = (anim.thumbnail && anim.thumbnail.file_id) ? anim.thumbnail.file_id : anim.file_id;
                                 const newMsg = {
                                     id: newMsgId,
+                                    telegramMessageId: msg.message_id,
+                                    replyTo: msg.reply_to_message ? { text: msg.reply_to_message.text || msg.reply_to_message.caption || 'GIF' } : null,
                                     sender: CONFIG.yourName,
                                     type: 'sticker',
                                     stickerFileId: targetFileId,
@@ -1049,6 +1088,8 @@ function checkTelegramReplies() {
                                 if (text && !text.startsWith("/")) {
                                     history.push({
                                         id: newMsgId,
+                                        telegramMessageId: msg.message_id,
+                                        replyTo: msg.reply_to_message ? { text: msg.reply_to_message.text || msg.reply_to_message.caption || 'Media' } : null,
                                         sender: CONFIG.yourName,
                                         text: text,
                                         timestamp: time,
@@ -1085,6 +1126,30 @@ function checkTelegramReplies() {
             isCheckingReplies = false;
         });
 }
+
+let activeReplyState = null;
+
+window.initiateReply = function(localMsgId, telegramMsgId, textPreview) {
+    activeReplyState = {
+        localId: localMsgId,
+        telegramId: telegramMsgId,
+        text: textPreview || 'Media'
+    };
+    const replyBar = document.getElementById("active-reply-bar");
+    const replyText = document.getElementById("active-reply-text");
+    if (replyBar && replyText) {
+        replyText.textContent = activeReplyState.text + (activeReplyState.text.length >= 30 ? '...' : '');
+        replyBar.classList.remove("hide");
+    }
+    const input = document.getElementById("secret-reply-input");
+    if (input) input.focus();
+};
+
+window.cancelReply = function() {
+    activeReplyState = null;
+    const replyBar = document.getElementById("active-reply-bar");
+    if (replyBar) replyBar.classList.add("hide");
+};
 
 // Secret chat input listeners in Love Space
 if (secretSendBtn && secretReplyInput) {

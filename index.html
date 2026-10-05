@@ -143,6 +143,11 @@
                     </div>
                 </div>
 
+                <div id="active-reply-bar" class="hide" style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--disguise-bg); border-left: 3px solid var(--disguise-primary); font-size: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem; color: var(--disguise-text-muted);">
+                    <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%;">Replying to: <span id="active-reply-text" style="font-weight: 600; color: var(--disguise-text);"></span></div>
+                    <button onclick="cancelReply()" style="background:transparent; border:none; cursor:pointer; color: var(--disguise-text-muted); font-size: 0.8rem;">✖</button>
+                </div>
+
                 <div class="chat-input-wrapper">
                     <button id="chat-sticker-btn" class="chat-sticker-toggle-btn" type="button" title="Send a Sticker" aria-label="Open Stickers">
                         <span class="sticker-btn-icon">🥰</span>
