@@ -981,11 +981,64 @@ function initStickerPicker() {
 
     let currentCategory = "cats";
 
+    const searchContainer = document.getElementById("giphy-search-container");
+    const searchInput = document.getElementById("giphy-search-input");
+    let searchTimeout = null;
+
+    function searchGiphy(query) {
+        if (!query.trim()) {
+            stickerGrid.innerHTML = `<div style="padding: 1rem; color: var(--disguise-text-muted); text-align: center; width: 100%;">Type something to search GIFs...</div>`;
+            return;
+        }
+        stickerGrid.innerHTML = `<div style="padding: 1rem; color: var(--disguise-text-muted); text-align: center; width: 100%;">Searching...</div>`;
+        const url = `https://api.giphy.com/v1/gifs/search?api_key=GlVGYHqc3SyCEwfabFwO31N9v3U6j0xX&q=${encodeURIComponent(query)}&limit=24&rating=pg-13`;
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                stickerGrid.innerHTML = "";
+                if (data.data && data.data.length > 0) {
+                    data.data.forEach(gif => {
+                        const btn = document.createElement("button");
+                        btn.className = "sticker-item";
+                        btn.type = "button";
+                        btn.title = gif.title || "GIF";
+                        
+                        const thumbUrl = gif.images.fixed_height_small.url;
+                        const fullUrl = gif.images.fixed_height.url;
+                        btn.innerHTML = `<img src="${thumbUrl}" alt="${gif.title || 'GIF'}" class="sticker-thumb" loading="lazy">`;
+
+                        btn.addEventListener("click", () => {
+                            sendSecretSticker({
+                                name: gif.title || "GIF",
+                                url: fullUrl,
+                                emoji: "✨",
+                                isAnim: true
+                            });
+                        });
+                        stickerGrid.appendChild(btn);
+                    });
+                } else {
+                    stickerGrid.innerHTML = `<div style="padding: 1rem; color: var(--disguise-text-muted); text-align: center; width: 100%;">No GIFs found.</div>`;
+                }
+            })
+            .catch(err => {
+                stickerGrid.innerHTML = `<div style="padding: 1rem; color: var(--disguise-text-muted); text-align: center; width: 100%;">Error loading GIFs.</div>`;
+            });
+    }
+
     function renderCategory(cat) {
         currentCategory = cat;
-        const items = STICKER_CATALOG[cat] || [];
         stickerGrid.innerHTML = "";
+        
+        if (cat === "search") {
+            if (searchContainer) searchContainer.classList.remove("hide");
+            searchGiphy(searchInput ? searchInput.value : "");
+            return;
+        } else {
+            if (searchContainer) searchContainer.classList.add("hide");
+        }
 
+        const items = STICKER_CATALOG[cat] || [];
         items.forEach(stk => {
             const btn = document.createElement("button");
             btn.className = "sticker-item";
@@ -1003,6 +1056,15 @@ function initStickerPicker() {
             });
 
             stickerGrid.appendChild(btn);
+        });
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener("input", (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                searchGiphy(e.target.value);
+            }, 500);
         });
     }
 
