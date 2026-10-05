@@ -831,7 +831,7 @@ function sendSecretSticker(sticker) {
         const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`;
         const data = {
             chat_id: CONFIG.telegramChatId,
-            text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji} ${sticker.name ? \`(\${sticker.name})\` : ''}`
+            text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji} ${sticker.name ? '(' + sticker.name + ')' : ''}`
         };
         if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
             data.reply_parameters = { message_id: parseInt(activeReplyState.telegramId) };
