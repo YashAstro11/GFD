@@ -703,6 +703,36 @@ function renderSecretChat() {
                     });
                 }
             }
+        } else if (msg.type === 'voice') {
+            if (msg.stickerUrl) {
+                bubbleContent = `
+                    <div class="chat-bubble audio-bubble" style="padding: 0.5rem;">
+                        <audio controls src="${escapeHTML(msg.stickerUrl)}" style="max-width: 100%; height: 40px;"></audio>
+                    </div>
+                `;
+            } else {
+                bubbleContent = `
+                    <div class="chat-bubble audio-bubble" style="padding: 0.5rem;">
+                        <div class="sticker-loading-placeholder">
+                            <span class="sticker-fallback-emoji">🎤</span>
+                            <span class="sticker-loading-spinner"></span>
+                        </div>
+                    </div>
+                `;
+                if (msg.stickerFileId) {
+                    resolveTelegramFileUrl(msg.stickerFileId).then(url => {
+                        if (url) {
+                            const curHistory = getChatHistory();
+                            const item = curHistory.find(m => m.id === msg.id);
+                            if (item) {
+                                item.stickerUrl = url;
+                                localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
+                                renderSecretChat();
+                            }
+                        }
+                    });
+                }
+            }
         } else {
             bubbleContent = `
                 <div class="chat-bubble">
@@ -714,7 +744,7 @@ function renderSecretChat() {
         bubbleContent = replyHtml + bubbleContent;
 
         let editBtnHtml = '';
-        if (!msg.isPartner && msg.type !== 'sticker' && msg.type !== 'photo' && msg.telegramMessageId) {
+        if (!msg.isPartner && msg.type !== 'sticker' && msg.type !== 'photo' && msg.type !== 'voice' && msg.telegramMessageId) {
             editBtnHtml = `
                 <button onclick="initiateEdit('${msg.id}', '${msg.telegramMessageId}', \`${escapeHTML((msg.text || '').replace(/'/g, "\\'"))}\`)" style="background:transparent; border:none; color:var(--disguise-text-muted); cursor:pointer; font-size: 0.7rem; display:flex; align-items:center; gap:0.2rem;" title="Edit">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg> Edit
@@ -1248,8 +1278,37 @@ function checkTelegramReplies() {
                                         }
                                     });
                                 }
+                            } else if (msg.voice || msg.audio) {
+                                // 4. Yash sent a Voice Note or Audio
+                                const audio = msg.voice || msg.audio;
+                                const newMsg = {
+                                    id: newMsgId,
+                                    telegramMessageId: msg.message_id,
+                                    replyTo: msg.reply_to_message ? { text: msg.reply_to_message.text || msg.reply_to_message.caption || 'Voice Note' } : null,
+                                    sender: CONFIG.yourName,
+                                    type: 'voice',
+                                    stickerFileId: audio.file_id,
+                                    stickerUrl: '',
+                                    text: "Voice Note 🎤",
+                                    timestamp: time,
+                                    isPartner: true
+                                };
+                                history.push(newMsg);
+                                newPartnerMessages++;
+
+                                resolveTelegramFileUrl(audio.file_id).then(fileUrl => {
+                                    if (fileUrl) {
+                                        const curHistory = getChatHistory();
+                                        const item = curHistory.find(m => m.id === newMsgId);
+                                        if (item) {
+                                            item.stickerUrl = fileUrl;
+                                            localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
+                                            renderSecretChat();
+                                        }
+                                    }
+                                });
                             } else if (msg.text) {
-                                // 4. Yash sent a Text message
+                                // 5. Yash sent a Text message
                                 const text = msg.text.trim();
                                 if (text && !text.startsWith("/")) {
                                     history.push({
