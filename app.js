@@ -805,6 +805,7 @@ function sendSecretUpdate(message) {
             if (item) {
                 item.telegramMessageId = data.result.message_id;
                 localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+                renderSecretChat();
             }
         }
         setTimeout(checkTelegramReplies, 1500);
@@ -1304,7 +1305,9 @@ window.initiateReply = function(localMsgId, telegramMsgId, textPreview) {
     };
     const replyBar = document.getElementById("active-reply-bar");
     const replyText = document.getElementById("active-reply-text");
+    const replyLabel = document.getElementById("active-reply-label");
     if (replyBar && replyText) {
+        if (replyLabel) replyLabel.textContent = "Replying to:";
         replyText.textContent = activeReplyState.text + (activeReplyState.text.length >= 30 ? '...' : '');
         replyBar.classList.remove("hide");
     }
@@ -1326,7 +1329,9 @@ window.initiateEdit = function(localMsgId, telegramMsgId, textToEdit) {
     };
     const replyBar = document.getElementById("active-reply-bar");
     const replyText = document.getElementById("active-reply-text");
+    const replyLabel = document.getElementById("active-reply-label");
     if (replyBar && replyText) {
+        if (replyLabel) replyLabel.textContent = "";
         replyText.innerHTML = `<span style="color:var(--disguise-primary);">✏️ Editing message...</span>`;
         replyBar.classList.remove("hide");
     }
