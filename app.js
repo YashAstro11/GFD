@@ -535,16 +535,18 @@ const STICKER_CATALOG = {
 
 // In-memory cache for Telegram file URLs
 const telegramFileUrlCache = {};
+const audioBlobCache = {};
 
 async function resolveTelegramFileUrl(fileId) {
     if (!fileId || !CONFIG.telegramBotToken) return null;
-    if (telegramFileUrlCache[fileId]) return telegramFileUrlCache[fileId];
+    const now = Date.now();
+    if (telegramFileUrlCache[fileId] && (now - telegramFileUrlCache[fileId].ts < 3000000)) return telegramFileUrlCache[fileId].url;
 
     try {
-        const localCache = JSON.parse(localStorage.getItem('studyflow_file_cache') || '{}');
-        if (localCache[fileId]) {
+        const localCache = JSON.parse(localStorage.getItem('studyflow_file_cache_v2') || '{}');
+        if (localCache[fileId] && (now - localCache[fileId].ts < 3000000)) {
             telegramFileUrlCache[fileId] = localCache[fileId];
-            return localCache[fileId];
+            return localCache[fileId].url;
         }
     } catch (e) {}
 
@@ -553,12 +555,13 @@ async function resolveTelegramFileUrl(fileId) {
         const data = await res.json();
         if (data.ok && data.result && data.result.file_path) {
             const fileUrl = `https://api.telegram.org/file/bot${CONFIG.telegramBotToken}/${data.result.file_path}`;
-            telegramFileUrlCache[fileId] = fileUrl;
+            const cacheObj = { url: fileUrl, ts: now };
+            telegramFileUrlCache[fileId] = cacheObj;
             
             try {
-                const localCache = JSON.parse(localStorage.getItem('studyflow_file_cache') || '{}');
-                localCache[fileId] = fileUrl;
-                localStorage.setItem('studyflow_file_cache', JSON.stringify(localCache));
+                const localCache = JSON.parse(localStorage.getItem('studyflow_file_cache_v2') || '{}');
+                localCache[fileId] = cacheObj;
+                localStorage.setItem('studyflow_file_cache_v2', JSON.stringify(localCache));
             } catch (e) {}
 
             return fileUrl;
@@ -707,7 +710,10 @@ function renderSecretChat() {
             if (msg.stickerUrl) {
                 bubbleContent = `
                     <div class="chat-bubble audio-bubble" style="padding: 0.5rem;">
-                        <audio controls src="${escapeHTML(msg.stickerUrl)}" style="max-width: 100%; height: 40px;"></audio>
+                        <audio controls style="max-width: 100%; height: 40px;">
+                            <source src="${escapeHTML(msg.stickerUrl)}" type="audio/ogg; codecs=opus">
+                            <source src="${escapeHTML(msg.stickerUrl)}" type="audio/mp4">
+                        </audio>
                     </div>
                 `;
             } else {
@@ -1411,6 +1417,28 @@ window.cancelEdit = function() {
 
 // Secret chat input listeners in Love Space
 if (secretSendBtn && secretReplyInput) {
+    let lastTypingTime = 0;
+    
+    const handleSecretTyping = () => {
+        const now = Date.now();
+        // Send typing action at most once every 4 seconds
+        if (now - lastTypingTime > 4000 && secretReplyInput.value.trim().length > 0) {
+            lastTypingTime = now;
+            if (CONFIG.telegramBotToken && CONFIG.telegramChatId) {
+                fetch(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendChatAction`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: CONFIG.telegramChatId,
+                        action: 'typing'
+                    })
+                }).catch(e => console.error("Error sending typing action", e));
+            }
+        }
+    };
+
+    secretReplyInput.addEventListener("input", handleSecretTyping);
+
     const handleSecretSend = () => {
         const text = secretReplyInput.value.trim();
         if (text) {
