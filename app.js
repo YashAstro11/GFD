@@ -241,6 +241,32 @@ function closeUnlockModal() {
     passcodeError.classList.add("hide");
 }
 
+window.markMessagesAsSeen = function() {
+    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) return;
+    const history = getChatHistory();
+    let updated = false;
+
+    history.forEach(msg => {
+        if (msg.isPartner && !msg.botReacted && msg.telegramMessageId) {
+            msg.botReacted = true;
+            updated = true;
+            fetch(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/setMessageReaction`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: CONFIG.telegramChatId,
+                    message_id: msg.telegramMessageId,
+                    reaction: [{ type: "emoji", emoji: "👀" }]
+                })
+            }).catch(e => console.error("Reaction failed:", e));
+        }
+    });
+
+    if (updated) {
+        localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+    }
+};
+
 function verifyPasscode() {
     const entered = passcodeInput.value.trim();
     if (entered === CONFIG.passcode) {
@@ -258,6 +284,7 @@ function verifyPasscode() {
             disguiseContainer.classList.add("hide");
             loveContainer.classList.remove("hide");
             loveContainer.classList.add("fade-in");
+            if (typeof window.markMessagesAsSeen === 'function') window.markMessagesAsSeen();
             renderSecretChat();
             checkTelegramReplies(); // Fresh check
         }, 400);
@@ -747,7 +774,12 @@ function renderSecretChat() {
             `;
         }
         
-        bubbleContent = replyHtml + bubbleContent;
+        let reactionHtml = '';
+        if (msg.reaction) {
+            reactionHtml = `<div style="position: absolute; bottom: -8px; right: 0px; background: var(--disguise-bg, #fff); border: 1px solid var(--disguise-border, #eee); border-radius: 12px; padding: 1px 5px; font-size: 0.7rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); z-index: 2;">${escapeHTML(msg.reaction)}</div>`;
+        }
+        
+        bubbleContent = replyHtml + `<div style="position: relative; display: inline-block; max-width: 100%;">${bubbleContent}${reactionHtml}</div>`;
 
         let editBtnHtml = '';
         if (!msg.isPartner && msg.type !== 'sticker' && msg.type !== 'photo' && msg.type !== 'voice' && msg.telegramMessageId) {
@@ -780,6 +812,11 @@ function updateUnreadIndicator() {
     const unreadCount = parseInt(localStorage.getItem('studyflow_unread_count') || "0");
     const love = loveContainer || document.getElementById("love-container");
     const isLoveOpen = love && !love.classList.contains("hide");
+    
+    if (isLoveOpen && typeof window.markMessagesAsSeen === 'function') {
+        window.markMessagesAsSeen();
+    }
+    
     const dot = unreadDot || document.getElementById("unread-dot");
     const lockBtn = privateLockBtn || document.getElementById("private-lock-btn");
 
@@ -1149,7 +1186,8 @@ function checkTelegramReplies() {
     if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) return;
 
     let lastOffset = parseInt(localStorage.getItem('studyflow_last_offset') || "0");
-    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/getUpdates?offset=${lastOffset}`;
+    const allowed = encodeURIComponent('["message", "edited_message", "message_reaction"]');
+    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/getUpdates?offset=${lastOffset}&allowed_updates=${allowed}`;
 
     isCheckingReplies = true;
     fetch(url)
@@ -1168,7 +1206,21 @@ function checkTelegramReplies() {
                     // Strict Security: Only accept messages from Yash's Telegram Chat ID
                     const msg = update.message;
                     const editedMsg = update.edited_message;
+                    const reactionUpdate = update.message_reaction;
                     
+                    if (reactionUpdate && String(reactionUpdate.chat && reactionUpdate.chat.id) === String(CONFIG.telegramChatId)) {
+                        const itemIndex = history.findIndex(m => m.telegramMessageId === reactionUpdate.message_id);
+                        if (itemIndex !== -1) {
+                            if (reactionUpdate.new_reaction && reactionUpdate.new_reaction.length > 0) {
+                                const firstReaction = reactionUpdate.new_reaction[0];
+                                history[itemIndex].reaction = firstReaction.type === 'emoji' ? firstReaction.emoji : '❤️';
+                            } else {
+                                delete history[itemIndex].reaction;
+                            }
+                            newPartnerMessages++; // trigger UI update
+                        }
+                    }
+
                     if (editedMsg && String(editedMsg.chat && editedMsg.chat.id) === String(CONFIG.telegramChatId)) {
                         const itemIndex = history.findIndex(m => m.telegramMessageId === editedMsg.message_id);
                         if (itemIndex !== -1) {
