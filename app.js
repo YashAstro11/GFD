@@ -324,7 +324,7 @@ function triggerPanicLock() {
     
     // 2. Redirect the browser to an innocent educational site
     // Using replace() so the back button doesn't easily go back to the secret page
-    window.location.replace("https://scholar.google.com/");
+    window.location.replace("https://www.wikipedia.org/");
 }
 
 // Click panic button
