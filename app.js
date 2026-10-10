@@ -885,6 +885,107 @@ function sendSecretUpdate(message) {
     .catch(error => console.error("Cloud sync error."));
 }
 
+// === VOICE RECORDING LOGIC ===
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+
+function setupVoiceRecording() {
+    const recordBtn = document.getElementById("chat-record-btn");
+    const recordIcon = document.getElementById("record-btn-icon");
+    if (!recordBtn) return;
+
+    recordBtn.addEventListener("click", async () => {
+        if (isRecording && mediaRecorder) {
+            mediaRecorder.stop();
+            isRecording = false;
+            recordIcon.textContent = "🎤";
+            recordBtn.classList.remove("recording-active");
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) audioChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
+                if (audioBlob.size === 0) return;
+                sendSecretVoice(audioBlob);
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            isRecording = true;
+            recordIcon.textContent = "🛑";
+            recordBtn.classList.add("recording-active");
+        } catch (err) {
+            console.error("Error accessing microphone:", err);
+            alert("Microphone access is required to send voice notes.");
+        }
+    });
+}
+
+function sendSecretVoice(audioBlob) {
+    const objectUrl = URL.createObjectURL(audioBlob);
+    
+    const newMsg = {
+        id: 'msg_' + Date.now(),
+        sender: CONFIG.partnerName,
+        text: "Voice Note 🎤",
+        timestamp: Date.now(),
+        isPartner: false,
+        type: 'voice',
+        stickerUrl: objectUrl,
+        replyTo: typeof activeReplyState !== 'undefined' && activeReplyState ? { text: activeReplyState.text } : null
+    };
+    saveChatMessage(newMsg);
+
+    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
+        console.warn("Sync inactive: Missing credentials.");
+        if (typeof cancelReply !== 'undefined') cancelReply();
+        return;
+    }
+
+    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendVoice`;
+    const formData = new FormData();
+    formData.append('chat_id', CONFIG.telegramChatId);
+    formData.append('caption', `💌 Voice Note from ${CONFIG.partnerName}`);
+    formData.append('voice', audioBlob, 'voice.oga');
+
+    if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
+        formData.append('reply_to_message_id', parseInt(activeReplyState.telegramId));
+    }
+    if (typeof cancelReply !== 'undefined') cancelReply();
+
+    fetch(url, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data && data.ok && data.result && data.result.message_id) {
+            const history = getChatHistory();
+            const item = history.find(m => m.id === newMsg.id);
+            if (item) {
+                item.telegramMessageId = data.result.message_id;
+                if (data.result.voice) {
+                    item.stickerFileId = data.result.voice.file_id;
+                }
+                localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+                renderSecretChat();
+            }
+        }
+        setTimeout(checkTelegramReplies, 1500);
+    })
+    .catch(error => console.error("Cloud sync error."));
+}
+
 function sendSecretEdit(text) {
     if (!text || !text.trim()) return;
     const cleanMsg = text.trim();
@@ -1527,6 +1628,7 @@ function initApp() {
     updateUnreadIndicator();
     initStickerPicker();
     renderSecretChat();
+    setupVoiceRecording();
 
     // Check Telegram for replies immediately on load
     checkTelegramReplies();
