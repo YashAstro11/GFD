@@ -319,31 +319,46 @@ if (passcodeInput) {
 const panicBtn = document.getElementById("panic-btn");
 
 function triggerPanicLock() {
-    // 2. Hide love container & show disguise container
-    loveContainer.classList.add("hide");
-    loveContainer.classList.remove("fade-in");
-
-    disguiseContainer.classList.remove("hide");
-    disguiseContainer.classList.remove("fade-out");
-
-    // 3. Clear any sensitive data
-    passcodeInput.value = "";
-    closeUnlockModal();
-
-    // Check if new unread indicator should show in disguise mode
-    updateUnreadIndicator();
+    // 1. Hide the love container immediately to avoid any flash
+    if (loveContainer) loveContainer.classList.add("hide");
+    
+    // 2. Redirect the browser to an innocent educational site
+    // Using replace() so the back button doesn't easily go back to the secret page
+    window.location.replace("https://scholar.google.com/");
 }
 
-// Click panic button or press "Escape" on keyboard
+// Click panic button
 if (panicBtn) panicBtn.addEventListener("click", triggerPanicLock);
+
+let spacePressCount = 0;
+let spacePressTimer = null;
+
 window.addEventListener("keydown", (e) => {
+    // Check for Escape key
     if (e.key === "Escape" || e.keyCode === 27) {
-        // Check if love container is currently visible
-        if (!loveContainer.classList.contains("hide")) {
+        // Trigger if love container is visible, or even if passcode modal is open
+        if (!loveContainer.classList.contains("hide") || !passcodeModal.classList.contains("hide")) {
             triggerPanicLock();
-        } else if (!passcodeModal.classList.contains("hide")) {
-            closeUnlockModal();
         }
+    }
+
+    // Check for Spacebar double tap
+    if (e.key === " " || e.keyCode === 32) {
+        // Ignore spacebar if she is actively typing in an input field (like chat)
+        const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : "";
+        if (activeTag === "input" || activeTag === "textarea") {
+            return;
+        }
+
+        spacePressCount++;
+        if (spacePressCount >= 2) {
+            triggerPanicLock();
+        }
+
+        clearTimeout(spacePressTimer);
+        spacePressTimer = setTimeout(() => {
+            spacePressCount = 0;
+        }, 400); // 400ms time window to double-press spacebar
     }
 });
 
