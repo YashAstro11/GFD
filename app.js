@@ -736,11 +736,10 @@ function renderSecretChat() {
         } else if (msg.type === 'voice') {
             if (msg.stickerUrl) {
                 bubbleContent = `
-                    <div class="chat-bubble audio-bubble" style="padding: 0.5rem;">
-                        <audio controls style="max-width: 100%; height: 40px;">
-                            <source src="${escapeHTML(msg.stickerUrl)}" type="audio/ogg; codecs=opus">
-                            <source src="${escapeHTML(msg.stickerUrl)}" type="audio/mp4">
+                    <div class="chat-bubble audio-bubble" style="padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                        <audio controls style="max-width: 100%; height: 40px;" src="${escapeHTML(msg.stickerUrl)}">
                         </audio>
+                        <a href="${escapeHTML(msg.stickerUrl)}" target="_blank" style="font-size: 0.65rem; color: var(--disguise-text-muted); text-align: right; text-decoration: underline;">Download Audio</a>
                     </div>
                 `;
             } else {
