@@ -789,6 +789,11 @@ function renderSecretChat() {
             `;
         }
 
+        let seenHtml = '';
+        if (!msg.isPartner && msg.seen) {
+            seenHtml = `<span style="font-size: 0.7rem; color: #3b82f6; font-weight: 600; display:flex; align-items:center; gap:0.1rem; margin-left: 0.2rem;">✓✓ Seen</span>`;
+        }
+
         row.innerHTML = `
             <span class="chat-sender-name">${escapeHTML(senderLabel)}</span>
             ${bubbleContent}
@@ -798,6 +803,7 @@ function renderSecretChat() {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-9v5c5 0 11 2 11 9-2-5-9-5-9-5v5z"/></svg> Reply
                 </button>
                 ${editBtnHtml}
+                ${seenHtml}
             </div>
         `;
         container.appendChild(row);
@@ -1490,6 +1496,19 @@ function checkTelegramReplies() {
                 localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
 
                 if (newPartnerMessages > 0) {
+                    // Mark all previous Web App messages as seen since Yash sent some activity
+                    let historyChanged = false;
+                    history.forEach(m => {
+                        if (!m.isPartner && !m.seen) {
+                            m.seen = true;
+                            historyChanged = true;
+                        }
+                    });
+                    
+                    if (historyChanged) {
+                        localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+                    }
+
                     const isLoveOpen = loveContainer && !loveContainer.classList.contains("hide");
                     if (!isLoveOpen) {
                         let currentUnread = parseInt(localStorage.getItem('studyflow_unread_count') || "0");
@@ -1498,6 +1517,9 @@ function checkTelegramReplies() {
                         updateUnreadIndicator();
                     } else {
                         renderSecretChat();
+                        if (typeof window.markMessagesAsSeen === 'function') {
+                            window.markMessagesAsSeen();
+                        }
                     }
                 }
             }
@@ -1635,6 +1657,14 @@ function initApp() {
 
     // Poll periodically every 10 seconds for real-time replies
     setInterval(checkTelegramReplies, 10000);
+
+    // Mark messages as seen when window is focused and chat is open
+    window.addEventListener("focus", () => {
+        const isLoveOpen = loveContainer && !loveContainer.classList.contains("hide");
+        if (isLoveOpen && typeof window.markMessagesAsSeen === 'function') {
+            window.markMessagesAsSeen();
+        }
+    });
 }
 
 if (document.readyState === "loading") {
