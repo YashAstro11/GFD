@@ -1190,15 +1190,18 @@ function setupCameraSnap() {
 
     if (!cameraBtn) return;
 
-    async function startCamera() {
+    async function startCamera(isFlipAction = false) {
         stopCamera();
-        if (loadingHint) loadingHint.style.display = "flex";
+        if (loadingHint) {
+            loadingHint.textContent = "Starting camera... 📷";
+            loadingHint.style.display = "flex";
+        }
         if (video) video.classList.toggle("no-mirror", currentFacingMode !== "user");
 
         try {
             cameraStream = await navigator.mediaDevices.getUserMedia({
                 video: {
-                    facingMode: currentFacingMode,
+                    facingMode: { ideal: currentFacingMode },
                     width: { ideal: 1280 },
                     height: { ideal: 720 }
                 },
@@ -1210,7 +1213,25 @@ function setupCameraSnap() {
             }
             if (loadingHint) loadingHint.style.display = "none";
         } catch (err) {
-            console.warn("Direct webcam access failed or denied, using native file picker:", err);
+            console.warn("Direct webcam access error:", err);
+            if (isFlipAction) {
+                try {
+                    currentFacingMode = "user";
+                    if (video) video.classList.remove("no-mirror");
+                    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    if (video) {
+                        video.srcObject = cameraStream;
+                        await video.play();
+                    }
+                    if (loadingHint) {
+                        loadingHint.textContent = "Only 1 camera found (Mirror toggled) 🔄";
+                        loadingHint.style.display = "flex";
+                        setTimeout(() => { if (loadingHint) loadingHint.style.display = "none"; }, 1800);
+                    }
+                    return;
+                } catch (e2) {}
+            }
+
             stopCamera();
             if (modal) modal.classList.add("hide");
             if (fileInput) fileInput.click();
@@ -1247,9 +1268,35 @@ function setupCameraSnap() {
     }
 
     if (flipBtn) {
-        flipBtn.addEventListener("click", () => {
-            currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
-            startCamera();
+        flipBtn.addEventListener("click", async () => {
+            if (flipBtn.disabled) return;
+            flipBtn.disabled = true;
+            try {
+                let videoDevices = [];
+                if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                    try {
+                        const devices = await navigator.mediaDevices.enumerateDevices();
+                        videoDevices = devices.filter(d => d.kind === "videoinput");
+                    } catch (e) {}
+                }
+
+                if (videoDevices.length <= 1 && video) {
+                    const isMirrored = !video.classList.contains("no-mirror");
+                    video.classList.toggle("no-mirror", isMirrored);
+                    currentFacingMode = isMirrored ? "environment" : "user";
+                    if (loadingHint) {
+                        loadingHint.textContent = "1 camera detected (Mirror toggled) 🔄";
+                        loadingHint.style.display = "flex";
+                        setTimeout(() => { if (loadingHint) loadingHint.style.display = "none"; }, 1800);
+                    }
+                    return;
+                }
+
+                currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+                await startCamera(true);
+            } finally {
+                setTimeout(() => { flipBtn.disabled = false; }, 400);
+            }
         });
     }
 
@@ -2727,30 +2774,109 @@ function setupCallListeners() {
 
     if (camFlipBtn) {
         camFlipBtn.addEventListener("click", async () => {
+            if (camFlipBtn.disabled) return;
             if (!activeCallSession || !activeCallSession.localStream) return;
-            const currentMode = activeCallSession.currentFacingMode || 'user';
-            const newMode = currentMode === 'user' ? 'environment' : 'user';
-            activeCallSession.currentFacingMode = newMode;
+            camFlipBtn.disabled = true;
+
+            const statusLabel = document.getElementById("call-status-label");
+            const originalStatus = statusLabel ? statusLabel.textContent : "";
 
             try {
-                const newStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: newMode, width: { ideal: 1280 }, height: { ideal: 720 } }
-                });
-                const newTrack = newStream.getVideoTracks()[0];
-                const oldTrack = activeCallSession.localStream.getVideoTracks()[0];
-                if (oldTrack) {
-                    activeCallSession.localStream.removeTrack(oldTrack);
-                    oldTrack.stop();
+                let videoDevices = [];
+                if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                    try {
+                        const devs = await navigator.mediaDevices.enumerateDevices();
+                        videoDevices = devs.filter(d => d.kind === "videoinput");
+                    } catch (e) {}
                 }
-                activeCallSession.localStream.addTrack(newTrack);
-                if (activeCallSession.call && activeCallSession.call.peerConnection) {
-                    const sender = activeCallSession.call.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) sender.replaceTrack(newTrack);
-                }
+
                 const localVid = document.getElementById("call-local-video");
-                if (localVid) localVid.srcObject = activeCallSession.localStream;
+                const currentMode = activeCallSession.currentFacingMode || 'user';
+                const newMode = currentMode === 'user' ? 'environment' : 'user';
+
+                if (videoDevices.length <= 1) {
+                    // Only 1 physical camera on device (e.g. Laptop webcam)
+                    if (localVid) {
+                        const isNoMirror = localVid.classList.contains("no-mirror");
+                        localVid.classList.toggle("no-mirror", !isNoMirror);
+                        activeCallSession.currentFacingMode = !isNoMirror ? 'environment' : 'user';
+                    }
+                    if (statusLabel) {
+                        statusLabel.textContent = "1 camera detected (Mirror toggled) 🔄";
+                        setTimeout(() => {
+                            if (statusLabel && activeCallSession) statusLabel.textContent = activeCallSession.startTime ? "Connected 💕" : originalStatus;
+                        }, 2000);
+                    }
+                    return;
+                }
+
+                // Multiple physical cameras (e.g. Mobile phone front + back)
+                if (statusLabel) statusLabel.textContent = "Switching camera... 🔄";
+
+                const oldTrack = activeCallSession.localStream.getVideoTracks()[0];
+                let videoSender = null;
+                if (activeCallSession.call && activeCallSession.call.peerConnection) {
+                    const senders = activeCallSession.call.peerConnection.getSenders();
+                    videoSender = senders.find(s => s.track === oldTrack)
+                               || senders.find(s => s.track && s.track.kind === 'video')
+                               || senders.find(s => !s.track && s.dtmf === null);
+                }
+
+                // Release hardware lock on old track so mobile camera HAL can open back camera
+                if (oldTrack) {
+                    oldTrack.stop();
+                    activeCallSession.localStream.removeTrack(oldTrack);
+                }
+
+                let newStream = null;
+                try {
+                    newStream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: { ideal: newMode },
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        },
+                        audio: false
+                    });
+                } catch (flipErr) {
+                    console.warn("Target facingMode failed, falling back to basic video:", flipErr);
+                    newStream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
+                }
+
+                const newTrack = newStream.getVideoTracks()[0];
+                if (newTrack) {
+                    activeCallSession.currentFacingMode = newMode;
+                    activeCallSession.localStream.addTrack(newTrack);
+
+                    if (videoSender) {
+                        try {
+                            await videoSender.replaceTrack(newTrack);
+                        } catch (repErr) {
+                            console.error("Sender replaceTrack error:", repErr);
+                        }
+                    }
+
+                    if (localVid) {
+                        localVid.srcObject = null;
+                        localVid.srcObject = activeCallSession.localStream;
+                        localVid.classList.toggle("no-mirror", newMode === 'environment');
+                        try { await localVid.play(); } catch (e) {}
+                    }
+                }
+
+                if (statusLabel) {
+                    statusLabel.textContent = activeCallSession.startTime ? "Connected 💕" : originalStatus;
+                }
             } catch (err) {
                 console.error("Camera switch error:", err);
+                if (statusLabel) {
+                    statusLabel.textContent = activeCallSession.startTime ? "Connected 💕" : originalStatus;
+                }
+            } finally {
+                setTimeout(() => { camFlipBtn.disabled = false; }, 500);
             }
         });
     }

@@ -1901,6 +1901,11 @@ html, body {
     background: #111;
     z-index: 10;
     transition: all 0.2s ease;
+    transform: scaleX(-1);
+}
+
+.call-video-local.no-mirror {
+    transform: none;
 }
 
 .call-avatar-view {
