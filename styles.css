@@ -1344,10 +1344,6 @@ html, body {
     .polaroid-grid {
         grid-template-columns: 1fr;
     }
-
-    .quick-status-grid {
-        grid-template-columns: 1fr;
-    }
 }
 
 /* =========================================================================
@@ -1514,109 +1510,6 @@ html, body {
     padding: 0.65rem 0.25rem 0.2rem 0.25rem;
 }
 
-/* =========================================================================
-   7. QUICK STATUS CARD STYLING
-   ========================================================================= */
-.quick-status-card {
-    padding: 1.75rem;
-    position: relative;
-    border: 1px solid rgba(52, 152, 219, 0.25);
-}
-
-.quick-status-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    border-bottom: 1px solid var(--disguise-border);
-    padding-bottom: 1rem;
-    margin-bottom: 1.25rem;
-}
-
-.quick-status-icon {
-    font-size: 1.6rem;
-    background: rgba(52, 152, 219, 0.15);
-    width: 42px;
-    height: 42px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.quick-status-sub {
-    font-size: 0.75rem;
-    color: var(--disguise-text-muted);
-    margin-top: 0.15rem;
-}
-
-.quick-status-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.75rem;
-}
-
-.status-chip-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    padding: 0.75rem 1rem;
-    background: var(--disguise-card-bg);
-    border: 1px solid var(--disguise-border);
-    border-radius: 12px;
-    color: var(--disguise-text);
-    font-family: var(--font-body);
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    text-align: left;
-    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-.status-chip-btn:hover {
-    border-color: var(--disguise-primary);
-    background: rgba(52, 152, 219, 0.08);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.15);
-}
-
-.status-chip-btn:active {
-    transform: scale(0.97);
-}
-
-.status-chip-btn.sending {
-    border-color: #2ecc71;
-    background: rgba(46, 204, 113, 0.15);
-}
-
-.chip-emoji {
-    font-size: 1.25rem;
-    flex-shrink: 0;
-}
-
-.chip-label {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.status-toast {
-    margin-top: 1rem;
-    padding: 0.6rem 1rem;
-    border-radius: 10px;
-    background: rgba(46, 204, 113, 0.12);
-    border: 1px solid rgba(46, 204, 113, 0.3);
-    color: #27ae60;
-    font-size: 0.8rem;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    animation: fadeInAnimation 0.3s ease;
-}
-
-.status-toast-icon {
-    font-weight: bold;
-}
 
 /* =========================================================================
    8. PHOTO LIGHTBOX MODAL STYLING

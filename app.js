@@ -1952,37 +1952,6 @@ function queueLoveTapTelegram(name) {
     }, 2500); // Wait 2.5s after last tap to bundle cleanly
 }
 
-// 1-Tap Quick Status to Telegram
-function initQuickStatus() {
-    const statusBtns = document.querySelectorAll(".status-chip-btn");
-    const toast = document.getElementById("status-toast");
-    const toastMsg = document.getElementById("status-toast-msg");
-    if (!statusBtns.length) return;
-
-    statusBtns.forEach(btn => {
-        btn.addEventListener("click", () => {
-            const statusText = btn.getAttribute("data-status");
-            btn.classList.add("sending");
-            playTapTone("Kiss");
-
-            const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-            notifyTelegram(`⚡ <b>Status update from Mukku:</b>\n\n👉 <b>${statusText}</b>\n🕒 <code>${timeStr}</code>`)
-                .then(() => {
-                    setTimeout(() => btn.classList.remove("sending"), 600);
-                });
-
-            if (toast) {
-                const words = statusText.split(' ');
-                const shortPreview = words.slice(0, 3).join(' ');
-                if (toastMsg) toastMsg.textContent = `"${shortPreview}..." sent to Yash on Telegram! 🚀`;
-                toast.classList.remove("hide");
-                setTimeout(() => {
-                    toast.classList.add("hide");
-                }, 4000);
-            }
-        });
-    });
-}
 
 // =========================================================================
 // 10. SECRET PHOTO GALLERY & PEEK LIGHTBOX
@@ -2104,7 +2073,6 @@ function initApp() {
     renderSecretChat();
     setupVoiceRecording();
     setupCameraSnap();
-    initQuickStatus();
     initPhotoGallery();
 
     // Silent visit ping to Yash on Telegram
