@@ -33,6 +33,49 @@ function isLocalStaticEnvironment() {
     );
 }
 
+// Route Helper: Bridges Live Server (port 5500) with local dev server (port 3000) or Vercel
+function getApiEndpoint(route) {
+    if (window.location.port === '5500' || window.location.port === '5501' || window.location.port === '5502' || window.location.protocol === 'file:') {
+        return `http://localhost:3000${route}`;
+    }
+    return route;
+}
+
+// Media URL Resolver: Normalizes local/production URLs, attaches auth token safely
+function resolveMediaUrl(url, fileId) {
+    let target = url || '';
+    if (!target && fileId) {
+        target = `/api/file?file_id=${encodeURIComponent(fileId)}`;
+    }
+    if (!target) return '';
+    if (target.includes('/api/file')) {
+        const token = getSessionToken();
+        if (token && !target.includes('token=')) {
+            target += (target.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}`;
+        }
+        if (target.startsWith('/api/')) {
+            target = getApiEndpoint(target);
+        }
+    }
+    return target;
+}
+
+function resolveTelegramFileUrl(fileId) {
+    if (!fileId) return Promise.resolve('');
+    return Promise.resolve(resolveMediaUrl('', fileId));
+}
+
+window.openSecretLightbox = function(src, caption) {
+    const modal = document.getElementById("photo-lightbox-modal");
+    const img = document.getElementById("lightbox-img");
+    const cap = document.getElementById("lightbox-caption");
+    if (modal && img) {
+        img.src = src;
+        if (cap) cap.textContent = caption || "";
+        modal.classList.remove("hide");
+    }
+};
+
 // Encrypted Secret Letter Bundle (Zero plaintext secrets in client source code; protected with AES-GCM)
 const ENCRYPTED_LETTER_VAULT = {
     salt: "HAfCAHDitZQ99tm1jOCxYw==",
@@ -98,9 +141,6 @@ function setSessionToken(token) {
 
 // Central secure API client with session token authentication
 async function callTelegramApi(action, data = {}) {
-    if (isLocalStaticEnvironment()) {
-        return { ok: true, localMock: true, result: { message_id: Date.now() } };
-    }
     try {
         const headers = { 'Content-Type': 'application/json' };
         const token = getSessionToken();
@@ -108,13 +148,20 @@ async function callTelegramApi(action, data = {}) {
             headers['Authorization'] = `Bearer ${token}`;
             headers['x-session-token'] = token;
         }
-        const res = await fetch('/api/telegram', {
+        const endpoint = getApiEndpoint('/api/telegram');
+        const res = await fetch(endpoint, {
             method: 'POST',
             headers: headers,
             body: JSON.stringify({ action, ...data })
         });
+        if (!res.ok && isLocalStaticEnvironment()) {
+            return { ok: true, localMock: true, result: { message_id: Date.now() } };
+        }
         return await res.json();
     } catch (err) {
+        if (isLocalStaticEnvironment()) {
+            return { ok: true, localMock: true, result: { message_id: Date.now() } };
+        }
         console.error(`Telegram API error (${action}):`, err);
         return { ok: false, error: err.message };
     }
@@ -785,7 +832,8 @@ function decryptVaultData(str, key) {
 async function resolveTelegramFileUrl(fileId) {
     if (!fileId) return null;
     const token = getSessionToken();
-    return `/api/file?file_id=${encodeURIComponent(fileId)}&token=${encodeURIComponent(token)}`;
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+    return getApiEndpoint(`/api/file?file_id=${encodeURIComponent(fileId)}${tokenParam}`);
 }
 
 function getChatHistory() {
@@ -858,14 +906,15 @@ function renderSecretChat() {
         
         let bubbleContent = '';
         if (msg.type === 'sticker') {
-            if (msg.stickerUrl) {
+            const stickerUrl = resolveMediaUrl(msg.stickerUrl, msg.stickerFileId);
+            if (stickerUrl) {
                 bubbleContent = `
                     <div class="chat-bubble sticker-bubble">
-                        <img src="${escapeHTML(msg.stickerUrl)}" alt="${escapeHTML(msg.stickerEmoji || 'sticker')}" class="chat-sticker-img" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-block';">
+                        <img src="${escapeHTML(stickerUrl)}" alt="${escapeHTML(msg.stickerEmoji || 'sticker')}" class="chat-sticker-img" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-block';">
                         <span class="sticker-fallback-emoji" style="display:none;">${escapeHTML(msg.stickerEmoji || '💖')}</span>
                     </div>
                 `;
-            } else if (msg.stickerEmoji && !msg.stickerFileId) {
+            } else if (msg.stickerEmoji) {
                 bubbleContent = `
                     <div class="chat-bubble sticker-bubble">
                         <span class="sticker-fallback-emoji">${escapeHTML(msg.stickerEmoji)}</span>
@@ -875,72 +924,36 @@ function renderSecretChat() {
                 bubbleContent = `
                     <div class="chat-bubble sticker-bubble">
                         <div class="sticker-loading-placeholder">
-                            <span class="sticker-fallback-emoji">${escapeHTML(msg.stickerEmoji || '✨')}</span>
-                            <span class="sticker-loading-spinner"></span>
+                            <span class="sticker-fallback-emoji">💖</span>
                         </div>
                     </div>
                 `;
-                if (msg.stickerFileId) {
-                    resolveTelegramFileUrl(msg.stickerFileId).then(url => {
-                        if (url) {
-                            const curHistory = getChatHistory();
-                            const item = curHistory.find(m => m.id === msg.id);
-                            if (item) {
-                                item.stickerUrl = url;
-                                localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
-                                renderSecretChat();
-                            }
-                        }
-                    });
-                }
             }
         } else if (msg.type === 'photo') {
             const captionHtml = msg.text ? `<div class="chat-media-caption">${escapeHTML(msg.text)}</div>` : '';
-            if (msg.stickerUrl) {
-                bubbleContent = `
-                    <div class="chat-bubble photo-bubble">
-                        <img src="${escapeHTML(msg.stickerUrl)}" alt="Photo" class="chat-sticker-img" loading="lazy">
-                        ${captionHtml}
-                    </div>
-                `;
-            } else {
-                bubbleContent = `
-                    <div class="chat-bubble photo-bubble">
-                        <div class="sticker-loading-placeholder">
-                            <span class="sticker-fallback-emoji">📷</span>
-                            <span class="sticker-loading-spinner"></span>
-                        </div>
-                        ${captionHtml}
-                    </div>
-                `;
-                if (msg.stickerFileId) {
-                    resolveTelegramFileUrl(msg.stickerFileId).then(url => {
-                        if (url) {
-                            const curHistory = getChatHistory();
-                            const item = curHistory.find(m => m.id === msg.id);
-                            if (item) {
-                                item.stickerUrl = url;
-                                localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
-                                renderSecretChat();
-                            }
-                        }
-                    });
-                }
-            }
+            const photoUrl = resolveMediaUrl(msg.stickerUrl, msg.stickerFileId);
+
+            bubbleContent = `
+                <div class="chat-bubble photo-bubble">
+                    <img src="${escapeHTML(photoUrl)}" alt="Photo" class="chat-sticker-img" loading="lazy" style="cursor: pointer;" onclick="if(window.openSecretLightbox) window.openSecretLightbox('${escapeHTML(photoUrl)}', 'Photo from ${CONFIG.yourName}');" onerror="this.onerror=null; this.src='data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 100 100\\'%3E%3Ctext y=\\'.9em\\' font-size=\\'80\\'%3E🖼️%3C/text%3E%3C/svg%3E';">
+                    ${captionHtml}
+                </div>
+            `;
         } else if (msg.type === 'voice') {
-            if (msg.stickerUrl && !msg.stickerUrl.startsWith('blob:')) {
+            const voiceUrl = resolveMediaUrl(msg.stickerUrl, msg.stickerFileId);
+            if (voiceUrl && !voiceUrl.startsWith('blob:')) {
                 bubbleContent = `
                     <div class="chat-bubble audio-bubble" style="padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
-                        <audio controls style="max-width: 100%; height: 40px;" src="${escapeHTML(msg.stickerUrl)}">
+                        <audio controls style="max-width: 100%; height: 40px;" src="${escapeHTML(voiceUrl)}">
                         </audio>
-                        <a href="${escapeHTML(msg.stickerUrl)}" target="_blank" style="font-size: 0.65rem; color: var(--disguise-text-muted); text-align: right; text-decoration: underline;">Download Audio</a>
+                        <a href="${escapeHTML(voiceUrl)}" target="_blank" style="font-size: 0.65rem; color: var(--disguise-text-muted); text-align: right; text-decoration: underline;">Download Audio</a>
                     </div>
                 `;
             } else {
                 bubbleContent = `
                     <div class="chat-bubble audio-bubble" style="padding: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
                         <span style="font-size: 1.2rem;">🎤</span>
-                        <span style="font-size: 0.8rem; color: var(--disguise-text-muted);">Voice Note (Sent)</span>
+                        <span style="font-size: 0.8rem; color: var(--disguise-text-muted);">Voice Note</span>
                     </div>
                 `;
             }
@@ -1626,14 +1639,14 @@ let isCheckingReplies = false;
 
 function checkTelegramReplies() {
     if (isCheckingReplies) return;
-    if (isLocalStaticEnvironment()) return; // Don't poll /api/ on static servers
     const token = getSessionToken();
     if (!token) return; // Only poll when authenticated
 
     let lastOffset = parseInt(localStorage.getItem('studyflow_last_offset') || "0");
     isCheckingReplies = true;
 
-    fetch(`/api/telegram?action=getUpdates&offset=${lastOffset}`, {
+    const endpoint = getApiEndpoint(`/api/telegram?action=getUpdates&offset=${lastOffset}`);
+    fetch(endpoint, {
         headers: { 'Authorization': `Bearer ${token}` }
     })
         .then(res => res.json())
@@ -1642,6 +1655,7 @@ function checkTelegramReplies() {
                 let newPartnerMessages = 0;
                 let maxUpdateId = lastOffset;
                 const history = getChatHistory();
+                const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
 
                 data.result.forEach(update => {
                     if (update.update_id >= maxUpdateId) {
@@ -1696,7 +1710,7 @@ function checkTelegramReplies() {
                                     sender: CONFIG.yourName,
                                     type: 'sticker',
                                     stickerFileId: targetFileId,
-                                    stickerUrl: targetFileId ? `/api/file?file_id=${encodeURIComponent(targetFileId)}` : '',
+                                    stickerUrl: targetFileId ? `/api/file?file_id=${encodeURIComponent(targetFileId)}${tokenParam}` : '',
                                     stickerEmoji: sticker.emoji || "💖",
                                     text: sticker.emoji || "Sticker",
                                     timestamp: time,
@@ -1714,7 +1728,7 @@ function checkTelegramReplies() {
                                     sender: CONFIG.yourName,
                                     type: 'photo',
                                     stickerFileId: photo.file_id,
-                                    stickerUrl: `/api/file?file_id=${encodeURIComponent(photo.file_id)}`,
+                                    stickerUrl: `/api/file?file_id=${encodeURIComponent(photo.file_id)}${tokenParam}`,
                                     text: msg.caption ? msg.caption.trim() : "",
                                     timestamp: time,
                                     isPartner: true
@@ -1732,7 +1746,7 @@ function checkTelegramReplies() {
                                     sender: CONFIG.yourName,
                                     type: 'sticker',
                                     stickerFileId: targetFileId,
-                                    stickerUrl: targetFileId ? `/api/file?file_id=${encodeURIComponent(targetFileId)}` : '',
+                                    stickerUrl: targetFileId ? `/api/file?file_id=${encodeURIComponent(targetFileId)}${tokenParam}` : '',
                                     stickerEmoji: "✨",
                                     text: msg.caption ? msg.caption.trim() : "GIF",
                                     timestamp: time,
@@ -1750,7 +1764,7 @@ function checkTelegramReplies() {
                                     sender: CONFIG.yourName,
                                     type: 'voice',
                                     stickerFileId: audio.file_id,
-                                    stickerUrl: `/api/file?file_id=${encodeURIComponent(audio.file_id)}`,
+                                    stickerUrl: `/api/file?file_id=${encodeURIComponent(audio.file_id)}${tokenParam}`,
                                     text: "Voice Note 🎤",
                                     timestamp: time,
                                     isPartner: true
