@@ -1010,6 +1010,240 @@ function sendSecretVoice(audioBlob) {
     .catch(error => console.error("Cloud sync error."));
 }
 
+// === CAMERA & SELFIE LOGIC ===
+let cameraStream = null;
+let currentFacingMode = "user"; // Front camera by default for selfies
+
+function setupCameraSnap() {
+    const cameraBtn = document.getElementById("chat-camera-btn");
+    const fileInput = document.getElementById("chat-camera-file-input");
+    const modal = document.getElementById("camera-snap-modal");
+    const closeBtn = document.getElementById("close-camera-modal-btn");
+    const video = document.getElementById("camera-video-preview");
+    const canvas = document.getElementById("camera-canvas-capture");
+    const snapBtn = document.getElementById("camera-snap-send-btn");
+    const flipBtn = document.getElementById("camera-switch-btn");
+    const galleryBtn = document.getElementById("camera-upload-fallback-btn");
+    const loadingHint = document.getElementById("camera-loading-hint");
+
+    if (!cameraBtn) return;
+
+    async function startCamera() {
+        stopCamera();
+        if (loadingHint) loadingHint.style.display = "flex";
+        if (video) video.classList.toggle("no-mirror", currentFacingMode !== "user");
+
+        try {
+            cameraStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: currentFacingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
+            });
+            if (video) {
+                video.srcObject = cameraStream;
+                await video.play();
+            }
+            if (loadingHint) loadingHint.style.display = "none";
+        } catch (err) {
+            console.warn("Direct webcam access failed or denied, using native file picker:", err);
+            stopCamera();
+            if (modal) modal.classList.add("hide");
+            if (fileInput) fileInput.click();
+        }
+    }
+
+    function stopCamera() {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(t => t.stop());
+            cameraStream = null;
+        }
+        if (video) video.srcObject = null;
+    }
+
+    cameraBtn.addEventListener("click", () => {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            if (fileInput) fileInput.click();
+            return;
+        }
+
+        if (modal) {
+            modal.classList.remove("hide");
+            startCamera();
+        } else if (fileInput) {
+            fileInput.click();
+        }
+    });
+
+    if (closeBtn) {
+        closeBtn.addEventListener("click", () => {
+            stopCamera();
+            if (modal) modal.classList.add("hide");
+        });
+    }
+
+    if (flipBtn) {
+        flipBtn.addEventListener("click", () => {
+            currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+            startCamera();
+        });
+    }
+
+    if (galleryBtn) {
+        galleryBtn.addEventListener("click", () => {
+            stopCamera();
+            if (modal) modal.classList.add("hide");
+            if (fileInput) fileInput.click();
+        });
+    }
+
+    if (snapBtn && video && canvas) {
+        snapBtn.addEventListener("click", () => {
+            if (!video.videoWidth) return;
+
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+
+            if (currentFacingMode === "user") {
+                ctx.translate(w, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(video, 0, 0, w, h);
+
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    sendSecretPhoto(blob, "Selfie 📸");
+                }
+            }, "image/jpeg", 0.85);
+
+            stopCamera();
+            if (modal) modal.classList.add("hide");
+        });
+    }
+
+    if (modal) {
+        modal.addEventListener("click", (e) => {
+            if (e.target === modal) {
+                stopCamera();
+                modal.classList.add("hide");
+            }
+        });
+    }
+
+    window.addEventListener("keydown", (e) => {
+        if ((e.key === "Escape" || e.keyCode === 27) && modal && !modal.classList.contains("hide")) {
+            stopCamera();
+            modal.classList.add("hide");
+        }
+    });
+
+    if (fileInput) {
+        fileInput.addEventListener("change", (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const maxDim = 1280;
+                    let w = img.width;
+                    let h = img.height;
+                    if (w > maxDim || h > maxDim) {
+                        if (w > h) {
+                            h = Math.round((h * maxDim) / w);
+                            w = maxDim;
+                        } else {
+                            w = Math.round((w * maxDim) / h);
+                            h = maxDim;
+                        }
+                    }
+
+                    const offCanvas = document.createElement("canvas");
+                    offCanvas.width = w;
+                    offCanvas.height = h;
+                    const ctx = offCanvas.getContext("2d");
+                    ctx.drawImage(img, 0, 0, w, h);
+
+                    offCanvas.toBlob((blob) => {
+                        if (blob) {
+                            sendSecretPhoto(blob, "Photo 📸");
+                        }
+                    }, "image/jpeg", 0.85);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+            fileInput.value = "";
+        });
+    }
+}
+
+function sendSecretPhoto(photoBlob, caption = "Photo 📸") {
+    if (!photoBlob) return;
+    const objectUrl = URL.createObjectURL(photoBlob);
+    const msgId = 'msg_photo_' + Date.now();
+
+    const newMsg = {
+        id: msgId,
+        sender: CONFIG.partnerName,
+        text: caption,
+        timestamp: Date.now(),
+        isPartner: false,
+        type: 'photo',
+        stickerUrl: objectUrl,
+        replyTo: typeof activeReplyState !== 'undefined' && activeReplyState ? { text: activeReplyState.text } : null
+    };
+    saveChatMessage(newMsg);
+    playTapTone("Heart");
+
+    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
+        console.warn("Sync inactive: Missing credentials.");
+        if (typeof cancelReply !== 'undefined') cancelReply();
+        return;
+    }
+
+    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendPhoto`;
+    const formData = new FormData();
+    formData.append('chat_id', CONFIG.telegramChatId);
+    formData.append('photo', photoBlob, 'mukku_photo.jpg');
+    formData.append('caption', `📸 Secret Photo from ${CONFIG.partnerName}! 💕`);
+
+    if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
+        formData.append('reply_to_message_id', parseInt(activeReplyState.telegramId));
+    }
+    if (typeof cancelReply !== 'undefined') cancelReply();
+
+    fetch(url, {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data && data.ok && data.result && data.result.message_id) {
+            const history = getChatHistory();
+            const item = history.find(m => m.id === newMsg.id);
+            if (item) {
+                item.telegramMessageId = data.result.message_id;
+                if (data.result.photo && data.result.photo.length > 0) {
+                    item.stickerFileId = data.result.photo[data.result.photo.length - 1].file_id;
+                }
+                localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+                renderSecretChat();
+            }
+        }
+        setTimeout(checkTelegramReplies, 1500);
+    })
+    .catch(err => {
+        console.error("Error sending photo to Telegram:", err);
+    });
+}
+
 function sendSecretEdit(text) {
     if (!text || !text.trim()) return;
     const cleanMsg = text.trim();
@@ -1869,6 +2103,7 @@ function initApp() {
     initStickerPicker();
     renderSecretChat();
     setupVoiceRecording();
+    setupCameraSnap();
     initQuickStatus();
     initPhotoGallery();
 

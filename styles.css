@@ -1715,3 +1715,160 @@ html, body {
     font-weight: 500;
 }
 
+/* =========================================================================
+   9. INSTANT SELFIE CAMERA MODAL
+   ========================================================================= */
+.camera-modal-card {
+    background: var(--disguise-card-bg);
+    border: 1px solid var(--disguise-border);
+    border-radius: 20px;
+    padding: 1.25rem;
+    max-width: 440px;
+    width: 92%;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.3);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: fadeInAnimation 0.3s ease;
+}
+
+.camera-modal-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.camera-modal-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--disguise-text);
+}
+
+.close-camera-btn {
+    background: rgba(0, 0, 0, 0.08);
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--disguise-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.close-camera-btn:hover {
+    background: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
+}
+
+.camera-viewport-wrapper {
+    width: 100%;
+    height: 340px;
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+    background: #0f172a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--disguise-border);
+}
+
+.camera-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* Mirror view for selfies */
+    display: block;
+}
+
+.camera-video.no-mirror {
+    transform: none;
+}
+
+.camera-loading-hint {
+    position: absolute;
+    color: #94a3b8;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    pointer-events: none;
+}
+
+.camera-modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    width: 100%;
+    margin-top: 1.25rem;
+}
+
+.camera-action-btn {
+    background: var(--disguise-bg);
+    border: 1px solid var(--disguise-border);
+    color: var(--disguise-text);
+    padding: 0.55rem 0.9rem;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.camera-action-btn:hover {
+    border-color: var(--disguise-primary);
+    color: var(--disguise-primary);
+    transform: translateY(-1px);
+}
+
+.camera-snap-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: transparent;
+    border: 4px solid var(--disguise-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 0 15px rgba(52, 152, 219, 0.25);
+}
+
+.camera-snap-btn:hover {
+    transform: scale(1.08);
+    box-shadow: 0 0 25px rgba(52, 152, 219, 0.5);
+}
+
+.camera-snap-btn:active {
+    transform: scale(0.92);
+}
+
+.snap-inner-circle {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--disguise-primary);
+    display: block;
+    transition: background 0.2s ease;
+}
+
+.camera-modal-hint {
+    font-size: 0.72rem;
+    color: var(--disguise-text-muted);
+    margin-top: 0.75rem;
+    text-align: center;
+}
+
+

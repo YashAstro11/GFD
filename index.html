@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <!-- Main Stylesheet -->
-    <link rel="stylesheet" href="styles.css?v=2.6">
+    <link rel="stylesheet" href="styles.css?v=2.7">
 </head>
 <body>
 
@@ -215,6 +215,10 @@
                     <button id="chat-sticker-btn" class="chat-sticker-toggle-btn" type="button" title="Send a Sticker" aria-label="Open Stickers">
                         <span class="sticker-btn-icon">🥰</span>
                     </button>
+                    <button id="chat-camera-btn" class="chat-sticker-toggle-btn" type="button" title="Take a Photo / Selfie" aria-label="Open Camera">
+                        <span class="sticker-btn-icon">📸</span>
+                    </button>
+                    <input type="file" id="chat-camera-file-input" accept="image/*" style="display: none;">
                     <input type="text" id="secret-reply-input" placeholder="Type your secret message..." autocomplete="off">
                     <button id="chat-record-btn" class="chat-sticker-toggle-btn" type="button" title="Record Voice Note" aria-label="Record Voice">
                         <span class="sticker-btn-icon" id="record-btn-icon">🎤</span>
@@ -326,7 +330,36 @@
         </div>
     </div>
 
+    <!-- Instant Selfie Camera Modal -->
+    <div id="camera-snap-modal" class="modal-overlay hide">
+        <div class="camera-modal-card">
+            <div class="camera-modal-header">
+                <span class="camera-modal-title">📸 Instant Selfie for Yash</span>
+                <button id="close-camera-modal-btn" class="close-camera-btn" type="button" title="Close (Esc)">✕</button>
+            </div>
+            
+            <div class="camera-viewport-wrapper">
+                <video id="camera-video-preview" autoplay playsinline muted class="camera-video"></video>
+                <canvas id="camera-canvas-capture" class="hide"></canvas>
+                <div id="camera-loading-hint" class="camera-loading-hint">Starting camera... 📷</div>
+            </div>
+
+            <div class="camera-modal-actions">
+                <button id="camera-switch-btn" class="camera-action-btn" type="button" title="Switch Camera">
+                    🔄 Flip
+                </button>
+                <button id="camera-snap-send-btn" class="camera-snap-btn" type="button" title="Capture and Send">
+                    <span class="snap-inner-circle"></span>
+                </button>
+                <button id="camera-upload-fallback-btn" class="camera-action-btn" type="button" title="Choose from Gallery">
+                    🖼️ Gallery
+                </button>
+            </div>
+            <p class="camera-modal-hint">Tap the circle to snap &amp; send instantly to Yash! 💕</p>
+        </div>
+    </div>
+
     <!-- Main JavaScript Logic -->
-    <script src="app.js?v=2.6"></script>
+    <script src="app.js?v=2.7"></script>
 </body>
 </html>
