@@ -1,7 +1,7 @@
 // Vercel Serverless Function: /api/verify
 // Validates passcode with strict rate-limiting, and issues HMAC session tokens.
 
-const { generateToken, verifyToken, extractToken, getPasscode } = require('./_auth');
+const { generateToken, verifyToken, extractToken, validatePasscode } = require('./_auth');
 
 // In-memory sliding window rate-limiter per client IP
 const rateLimitMap = new Map();
@@ -81,9 +81,8 @@ module.exports = async (req, res) => {
 
     // 2. Validate passcode
     const { passcode } = req.body || {};
-    const expectedPasscode = getPasscode();
 
-    if (passcode && String(passcode).trim() === expectedPasscode) {
+    if (passcode && validatePasscode(passcode)) {
         registerSuccess(ip);
         const token = generateToken();
         return res.status(200).json({
