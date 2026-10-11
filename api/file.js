@@ -1,13 +1,24 @@
 // Vercel Serverless Function: /api/file
-// Proxies Telegram file downloads (photos, stickers, voice notes)
-// so the Bot Token is never exposed in browser img or audio tags.
+// Proxies Telegram file downloads ONLY for authenticated sessions.
+
+const { verifyToken, extractToken } = require('./_auth');
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, x-session-token');
 
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
+    }
+
+    // Require valid session token
+    const token = extractToken(req);
+    if (!token || !verifyToken(token)) {
+        return res.status(401).json({
+            ok: false,
+            error: "Unauthorized: Access requires an active passcode session."
+        });
     }
 
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -41,7 +52,7 @@ module.exports = async (req, res) => {
         const arrayBuffer = await fileRes.arrayBuffer();
 
         res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'public, max-age=604800, s-maxage=604800, immutable');
+        res.setHeader('Cache-Control', 'private, max-age=86400');
         return res.status(200).send(Buffer.from(arrayBuffer));
     } catch (err) {
         console.error("API File Proxy Error:", err);

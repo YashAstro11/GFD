@@ -1,12 +1,16 @@
 // Vercel Serverless Function: /api/telegram
-// Handles all Telegram Bot API requests securely without exposing tokens to frontend clients.
+// Secured with HMAC session token validation to prevent unauthorized access.
+
+const { verifyToken, extractToken } = require('./_auth');
+
+// Simple rate limiter for visit pings
+const visitPingCache = new Map();
 
 module.exports = async (req, res) => {
-    // CORS headers for local testing and deployment
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-session-token');
 
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
@@ -18,7 +22,7 @@ module.exports = async (req, res) => {
     if (!BOT_TOKEN || !CHAT_ID) {
         return res.status(500).json({
             ok: false,
-            error: "Server configuration missing: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not configured in environment variables."
+            error: "Server configuration missing: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not configured."
         });
     }
 
@@ -27,6 +31,43 @@ module.exports = async (req, res) => {
 
         if (!action) {
             return res.status(400).json({ ok: false, error: "Action is required" });
+        }
+
+        // Special public action: Visit Notification (rate-limited, server-controlled message)
+        if (action === 'visitPing') {
+            const ip = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown';
+            const now = Date.now();
+            const lastPing = visitPingCache.get(ip) || 0;
+
+            if (now - lastPing < 10 * 60 * 1000) {
+                // Rate-limited silently to prevent spam
+                return res.status(200).json({ ok: true, rateLimited: true });
+            }
+            visitPingCache.set(ip, now);
+
+            const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            const payload = {
+                chat_id: CHAT_ID,
+                text: `🔔 <b>Mukku just opened StudyFlow!</b> 📚\n🕒 Time: <code>${timeStr}</code>\n<i>(She is on the website right now)</i>`,
+                parse_mode: 'HTML'
+            };
+
+            const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            return res.status(200).json(data);
+        }
+
+        // ALL OTHER ACTIONS REQUIRE VALID SESSION TOKEN
+        const token = extractToken(req);
+        if (!token || !verifyToken(token)) {
+            return res.status(401).json({
+                ok: false,
+                error: "Unauthorized: Access requires a valid vault passcode session."
+            });
         }
 
         // 1. Polling Updates (getUpdates)
@@ -39,7 +80,6 @@ module.exports = async (req, res) => {
             const data = await response.json();
 
             if (data.ok && Array.isArray(data.result)) {
-                // Security filter: strictly filter updates belonging to Yash's chat ID
                 data.result = data.result.filter(update => {
                     const fromChatId = (update.message && update.message.chat && update.message.chat.id) ||
                                        (update.edited_message && update.edited_message.chat && update.edited_message.chat.id) ||
@@ -122,14 +162,13 @@ module.exports = async (req, res) => {
             return res.status(200).json(data);
         }
 
-        // 6. Send Photo (supports Base64 Data URL or direct URL)
+        // 6. Send Photo (Base64 or URL)
         if (action === 'sendPhoto') {
             const { photo, caption, reply_to_message_id } = req.body || {};
             if (!photo) {
-                return res.status(400).json({ ok: false, error: "Photo data is required" });
+                return res.status(400).json({ ok: false, error: "Photo data required" });
             }
 
-            // Direct URL
             if (typeof photo === 'string' && photo.startsWith('http')) {
                 const payload = {
                     chat_id: CHAT_ID,
@@ -146,7 +185,6 @@ module.exports = async (req, res) => {
                 return res.status(200).json(data);
             }
 
-            // Base64 Data URL
             const matches = photo.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
             const mimeType = matches ? matches[1] : 'image/jpeg';
             const base64Data = matches ? matches[2] : photo;
@@ -171,7 +209,7 @@ module.exports = async (req, res) => {
         if (action === 'sendVoice') {
             const { voice, caption, reply_to_message_id } = req.body || {};
             if (!voice) {
-                return res.status(400).json({ ok: false, error: "Voice data is required" });
+                return res.status(400).json({ ok: false, error: "Voice data required" });
             }
 
             const matches = voice.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);

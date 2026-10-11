@@ -18,12 +18,30 @@ const CONFIG = {
     letterParagraphs: []
 };
 
-// Central secure API client for serverless Telegram proxy
+// Session Token Manager
+function getSessionToken() {
+    return sessionStorage.getItem('studyflow_auth_token') || localStorage.getItem('studyflow_auth_token') || '';
+}
+
+function setSessionToken(token) {
+    if (token) {
+        sessionStorage.setItem('studyflow_auth_token', token);
+        localStorage.setItem('studyflow_auth_token', token);
+    }
+}
+
+// Central secure API client with session token authentication
 async function callTelegramApi(action, data = {}) {
     try {
+        const headers = { 'Content-Type': 'application/json' };
+        const token = getSessionToken();
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+            headers['x-session-token'] = token;
+        }
         const res = await fetch('/api/telegram', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: headers,
             body: JSON.stringify({ action, ...data })
         });
         return await res.json();
@@ -281,11 +299,25 @@ async function verifyPasscode() {
         });
         const data = await res.json();
 
+        if (res.status === 429) {
+            handlePasscodeError(data.error || "Too many failed attempts. Locked for 15 minutes.");
+            return;
+        }
+
         if (data.ok && data.secret) {
+            if (data.sessionToken) {
+                setSessionToken(data.sessionToken);
+            }
+
             // Populate secret love letter paragraphs safely
             if (data.secret.letterParagraphs) {
                 CONFIG.letterParagraphs = data.secret.letterParagraphs;
                 initializeSurpriseContent();
+            }
+
+            // Load protected childhood photos securely
+            if (typeof loadProtectedPhotos === 'function') {
+                loadProtectedPhotos();
             }
 
             // Correct passcode! Transition to Love Space
@@ -307,11 +339,11 @@ async function verifyPasscode() {
                 checkTelegramReplies(); // Fresh check
             }, 400);
         } else {
-            handlePasscodeError();
+            handlePasscodeError(data.error || "Incorrect passcode. Please try again.");
         }
     } catch (e) {
         console.error("Passcode verification error:", e);
-        handlePasscodeError();
+        handlePasscodeError("Connection error. Please try again.");
     } finally {
         if (verifyPasscodeBtn) {
             verifyPasscodeBtn.disabled = false;
@@ -320,8 +352,11 @@ async function verifyPasscode() {
     }
 }
 
-function handlePasscodeError() {
-    passcodeError.classList.remove("hide");
+function handlePasscodeError(msg) {
+    if (passcodeError) {
+        passcodeError.textContent = msg || "Incorrect passcode. Please try again.";
+        passcodeError.classList.remove("hide");
+    }
     passcodeInput.value = "";
     passcodeInput.focus();
 
@@ -610,15 +645,53 @@ const STICKER_CATALOG = {
     ]
 };
 
-// Resolve Telegram file URL via secure proxy (no token exposure)
+// Vault Encryption Layer for LocalStorage (prevents plain text inspection)
+function getVaultKey() {
+    return getSessionToken() || 'studyflow_vault_key_mukku';
+}
+
+function encryptVaultData(str, key) {
+    if (!str) return '';
+    try {
+        let result = '';
+        for (let i = 0; i < str.length; i++) {
+            result += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+        }
+        return 'enc_' + btoa(encodeURIComponent(result));
+    } catch (e) {
+        return str;
+    }
+}
+
+function decryptVaultData(str, key) {
+    if (!str || typeof str !== 'string') return '';
+    if (!str.startsWith('enc_')) return str; // legacy unencrypted fallback
+    try {
+        const raw = decodeURIComponent(atob(str.slice(4)));
+        let result = '';
+        for (let i = 0; i < raw.length; i++) {
+            result += String.fromCharCode(raw.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+        }
+        return result;
+    } catch (e) {
+        return '[]';
+    }
+}
+
+// Resolve Telegram file URL via secure proxy (with token validation)
 async function resolveTelegramFileUrl(fileId) {
     if (!fileId) return null;
-    return `/api/file?file_id=${encodeURIComponent(fileId)}`;
+    const token = getSessionToken();
+    return `/api/file?file_id=${encodeURIComponent(fileId)}&token=${encodeURIComponent(token)}`;
 }
 
 function getChatHistory() {
     try {
-        return JSON.parse(localStorage.getItem('studyflow_chat_history')) || [];
+        const raw = localStorage.getItem('studyflow_chat_history');
+        if (!raw) return [];
+        const key = getVaultKey();
+        const decrypted = decryptVaultData(raw, key);
+        return JSON.parse(decrypted) || [];
     } catch (e) {
         return [];
     }
@@ -628,7 +701,8 @@ function saveChatMessage(msg) {
     const history = getChatHistory();
     if (!history.some(m => m.id === msg.id)) {
         history.push(msg);
-        localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+        const key = getVaultKey();
+        localStorage.setItem('studyflow_chat_history', encryptVaultData(JSON.stringify(history), key));
     }
     renderSecretChat();
 }
@@ -1464,11 +1538,15 @@ let isCheckingReplies = false;
 
 function checkTelegramReplies() {
     if (isCheckingReplies) return;
+    const token = getSessionToken();
+    if (!token) return; // Only poll when authenticated
 
     let lastOffset = parseInt(localStorage.getItem('studyflow_last_offset') || "0");
     isCheckingReplies = true;
 
-    fetch(`/api/telegram?action=getUpdates&offset=${lastOffset}`)
+    fetch(`/api/telegram?action=getUpdates&offset=${lastOffset}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
         .then(res => res.json())
         .then(data => {
             if (data.ok && Array.isArray(data.result) && data.result.length > 0) {
@@ -1771,8 +1849,7 @@ function sendVisitNotification() {
     // Notify once per browser session (or after 15 mins)
     if (!lastVisit || (now - parseInt(lastVisit)) > 15 * 60 * 1000) {
         sessionStorage.setItem('studyflow_visit_notified', now.toString());
-        const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        notifyTelegram(`🔔 <b>Mukku just opened StudyFlow!</b> 📚\n🕒 Time: <code>${timeStr}</code>\n<i>(She is on the website right now)</i>`);
+        callTelegramApi('visitPing').catch(() => {});
     }
 }
 
@@ -1805,11 +1882,27 @@ function queueLoveTapTelegram(name) {
 // 10. SECRET PHOTO GALLERY & PEEK LIGHTBOX
 // =========================================================================
 const PHOTO_COLLECTION = [
-    { src: "childhood_1.png", caption: "Meri choti cutie pie 🥺🌸" },
-    { src: "childhood_2.png", caption: "Meri jaan, mera sukoon 💖" },
-    { src: "childhood_3.png", caption: "Duniya ki sabse pyari Mukku 🐾" },
-    { src: "childhood_4.png", caption: "Sirf aur sirf meri Mukku ❤️" }
+    { id: 1, caption: "Meri choti cutie pie 🥺🌸" },
+    { id: 2, caption: "Meri jaan, mera sukoon 💖" },
+    { id: 3, caption: "Duniya ki sabse pyari Mukku 🐾" },
+    { id: 4, caption: "Sirf aur sirf meri Mukku ❤️" }
 ];
+
+function getPhotoUrl(id) {
+    const token = getSessionToken();
+    return `/api/photo?id=${id}&token=${encodeURIComponent(token)}`;
+}
+
+function loadProtectedPhotos() {
+    const token = getSessionToken();
+    if (!token) return;
+    const polaroidCards = document.querySelectorAll(".polaroid-card");
+    polaroidCards.forEach((card, idx) => {
+        const photoId = parseInt(card.getAttribute("data-photo-id") || (idx + 1));
+        const img = card.querySelector(".polaroid-img");
+        if (img) img.src = getPhotoUrl(photoId);
+    });
+}
 
 let currentLightboxIndex = 0;
 
@@ -1833,7 +1926,7 @@ function initPhotoGallery() {
 
     function updateLightboxView() {
         const item = PHOTO_COLLECTION[currentLightboxIndex];
-        if (lightboxImg) lightboxImg.src = item.src;
+        if (lightboxImg) lightboxImg.src = getPhotoUrl(item.id);
         if (lightboxCaption) lightboxCaption.textContent = item.caption;
         if (lightboxCounter) lightboxCounter.textContent = `${currentLightboxIndex + 1} / ${PHOTO_COLLECTION.length}`;
     }
@@ -1923,13 +2016,28 @@ function initApp() {
     setupCameraSnap();
     initPhotoGallery();
 
-    // Silent visit ping to Yash on Telegram
+    // Silent visit ping to Yash on Telegram (server controlled, rate-limited)
     sendVisitNotification();
 
-    // Check Telegram for replies immediately on load
-    checkTelegramReplies();
+    // Auto-restore session if previously authenticated
+    const token = getSessionToken();
+    if (token) {
+        fetch('/api/verify', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok && data.secret && data.secret.letterParagraphs) {
+                CONFIG.letterParagraphs = data.secret.letterParagraphs;
+                initializeSurpriseContent();
+                loadProtectedPhotos();
+                renderSecretChat();
+                checkTelegramReplies();
+            }
+        }).catch(() => {});
+    }
 
-    // Poll periodically every 10 seconds for real-time replies
+    // Poll periodically every 10 seconds for real-time replies (only when unlocked)
     setInterval(checkTelegramReplies, 10000);
 
     // Mark messages as seen when window is focused and chat is open
