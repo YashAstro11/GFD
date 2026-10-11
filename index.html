@@ -179,7 +179,15 @@
                             </div>
                         </div>
                     </div>
-                    <button id="clear-chat-btn" class="clear-chat-btn" title="Clear Chat History">Clear Chat</button>
+                    <div class="chat-header-actions" style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                        <button id="start-voice-call-btn" class="call-action-btn" type="button" title="Start Secret Voice Call">
+                            <span>📞</span> Voice Call
+                        </button>
+                        <button id="start-video-call-btn" class="call-action-btn" type="button" title="Start Secret Video Call">
+                            <span>📹</span> Video Call
+                        </button>
+                        <button id="clear-chat-btn" class="clear-chat-btn" title="Clear Chat History">Clear Chat</button>
+                    </div>
                 </div>
                 
                 <div id="secret-chat-messages" class="chat-messages-container">
@@ -317,7 +325,59 @@
         </div>
     </div>
 
+    <!-- Secret WebRTC Call Overlay Modal -->
+    <div id="secret-call-modal" class="call-modal-overlay hide">
+        <div class="call-modal-container">
+            <div class="call-top-bar">
+                <span class="call-encryption-tag">🔒 End-to-End Encrypted P2P</span>
+                <button id="call-panic-btn" class="call-mini-panic-btn" type="button" title="Quick Disguise (Esc)">
+                    <span>🔒 Quick Lock</span>
+                </button>
+            </div>
+
+            <div class="call-viewport-wrapper">
+                <!-- Video Remote (Full view when video is active) -->
+                <video id="call-remote-video" autoplay playsinline class="call-video-remote hide"></video>
+                
+                <!-- Video Local (Picture-in-picture) -->
+                <video id="call-local-video" autoplay playsinline muted class="call-video-local hide"></video>
+
+                <!-- Audio-Only Romantic Visualizer View -->
+                <div id="call-audio-avatar-view" class="call-avatar-view">
+                    <div class="call-avatar-ring-container">
+                        <div class="call-avatar-pulse-ring ring-1"></div>
+                        <div class="call-avatar-pulse-ring ring-2"></div>
+                        <div class="call-avatar-pulse-ring ring-3"></div>
+                        <div class="call-avatar-circle">
+                            <span id="call-partner-emoji" class="call-avatar-emoji">👑</span>
+                        </div>
+                    </div>
+                    <h3 id="call-partner-title" class="call-partner-name">Yash 👑</h3>
+                    <p id="call-status-label" class="call-status-text">Calling Yash... 🎶</p>
+                    <div id="call-timer-display" class="call-timer hide">00:00</div>
+                </div>
+            </div>
+
+            <div class="call-controls-bar">
+                <button id="call-mic-toggle-btn" class="call-ctrl-btn" type="button" title="Mute/Unmute Mic">
+                    <span id="call-mic-icon">🎤</span>
+                </button>
+                <button id="call-cam-toggle-btn" class="call-ctrl-btn" type="button" title="Camera On/Off">
+                    <span id="call-cam-icon">📹</span>
+                </button>
+                <button id="call-cam-flip-btn" class="call-ctrl-btn hide" type="button" title="Flip Camera">
+                    <span>🔄</span>
+                </button>
+                <button id="call-end-btn" class="call-ctrl-btn btn-end-call" type="button" title="End Call">
+                    <span>🔴</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PeerJS WebRTC Library -->
+    <script src="peerjs.min.js"></script>
     <!-- Main JavaScript Logic -->
-    <script src="app.js?v=3.0"></script>
+    <script src="app.js?v=3.5"></script>
 </body>
 </html>

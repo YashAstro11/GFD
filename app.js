@@ -487,6 +487,14 @@ async function verifyPasscode() {
                 if (typeof window.markMessagesAsSeen === 'function') window.markMessagesAsSeen();
                 renderSecretChat();
                 checkTelegramReplies(); // Fresh check
+
+                if (window.pendingIncomingCall) {
+                    const { callerId, callType } = window.pendingIncomingCall;
+                    window.pendingIncomingCall = null;
+                    setTimeout(() => {
+                        answerIncomingSecretCall(callerId, callType);
+                    }, 500);
+                }
             }, 400);
         } else {
             handlePasscodeError((data && data.error) || "Incorrect passcode. Please try again.");
@@ -536,6 +544,9 @@ if (passcodeInput) {
 const panicBtn = document.getElementById("panic-btn");
 
 function triggerPanicLock() {
+    if (typeof endSecretCall === 'function') {
+        endSecretCall(false);
+    }
     // 1. Hide the love container immediately to avoid any flash
     if (loveContainer) loveContainer.classList.add("hide");
 
@@ -2160,6 +2171,10 @@ function initApp() {
     // Poll periodically every 10 seconds for real-time replies (only when unlocked)
     setInterval(checkTelegramReplies, 10000);
 
+    // Initialize Secret WebRTC Calling
+    setupCallListeners();
+    checkIncomingCallUrl();
+
     // Mark messages as seen when window is focused and chat is open
     window.addEventListener("focus", () => {
         const isLoveOpen = loveContainer && !loveContainer.classList.contains("hide");
@@ -2167,6 +2182,597 @@ function initApp() {
             window.markMessagesAsSeen();
         }
     });
+}
+
+// =========================================================================
+// 10. SECRET WEBRTC AUDIO & VIDEO CALLING (End-to-End Encrypted P2P)
+// =========================================================================
+
+let activeCallSession = null;
+let ringToneAudioCtx = null;
+let ringToneInterval = null;
+
+// Synthetic Romantic Ringing Sound via Web Audio API
+function startRingingSound() {
+    stopRingingSound();
+    try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        ringToneAudioCtx = new AudioContextClass();
+
+        const playChimeBurst = () => {
+            if (!ringToneAudioCtx || ringToneAudioCtx.state === 'closed') return;
+            const now = ringToneAudioCtx.currentTime;
+            
+            // Dual chord tone (E5: 659.25Hz, G#5: 830.61Hz)
+            [659.25, 830.61].forEach(freq => {
+                const osc = ringToneAudioCtx.createOscillator();
+                const gain = ringToneAudioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.06, now + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+
+                osc.connect(gain);
+                gain.connect(ringToneAudioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 1.2);
+            });
+        };
+
+        playChimeBurst();
+        ringToneInterval = setInterval(playChimeBurst, 2800);
+    } catch (e) {
+        console.warn("AudioContext ringtone suppressed:", e);
+    }
+}
+
+function stopRingingSound() {
+    if (ringToneInterval) {
+        clearInterval(ringToneInterval);
+        ringToneInterval = null;
+    }
+    if (ringToneAudioCtx) {
+        try { ringToneAudioCtx.close(); } catch (e) {}
+        ringToneAudioCtx = null;
+    }
+}
+
+function playCallTone(type = 'connected') {
+    try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        const ctx = new AudioContextClass();
+        const now = ctx.currentTime;
+        const freqs = type === 'connected' ? [523.25, 659.25, 783.99] : [440, 349.23];
+        freqs.forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+            gain.gain.setValueAtTime(0.08, now + idx * 0.12);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.35);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now + idx * 0.12);
+            osc.stop(now + idx * 0.12 + 0.35);
+        });
+        setTimeout(() => ctx.close().catch(() => {}), 1000);
+    } catch (e) {}
+}
+
+function formatDuration(totalSeconds) {
+    const mins = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const secs = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+}
+
+// Initiate Secret Call (Caller: Mukku or Yash)
+async function startSecretCall(type = 'audio') {
+    if (activeCallSession) {
+        alert("A secret call is already active.");
+        return;
+    }
+
+    if (!window.Peer) {
+        alert("WebRTC connection library is still loading. Please check your connection and try again.");
+        return;
+    }
+
+    const isVideo = type === 'video';
+    const modal = document.getElementById("secret-call-modal");
+    const statusLabel = document.getElementById("call-status-label");
+    const partnerTitle = document.getElementById("call-partner-title");
+    const partnerEmoji = document.getElementById("call-partner-emoji");
+    const timerDisplay = document.getElementById("call-timer-display");
+    const localVideo = document.getElementById("call-local-video");
+    const remoteVideo = document.getElementById("call-remote-video");
+    const avatarView = document.getElementById("call-audio-avatar-view");
+    const camFlipBtn = document.getElementById("call-cam-flip-btn");
+
+    if (modal) modal.classList.remove("hide");
+    if (timerDisplay) timerDisplay.classList.add("hide");
+    if (remoteVideo) remoteVideo.classList.add("hide");
+    if (avatarView) avatarView.classList.remove("hide");
+
+    if (partnerTitle) partnerTitle.textContent = `${CONFIG.yourName} 👑`;
+    if (partnerEmoji) partnerEmoji.textContent = "👑";
+    if (statusLabel) statusLabel.textContent = `Calling ${CONFIG.yourName}... 🎶`;
+
+    let localStream = null;
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: isVideo ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false
+        });
+    } catch (err) {
+        console.error("Camera/Mic permission failed:", err);
+        alert(`Could not access your ${isVideo ? 'camera or microphone' : 'microphone'}. Please allow permissions in your browser.`);
+        if (modal) modal.classList.add("hide");
+        return;
+    }
+
+    if (isVideo && localVideo) {
+        localVideo.srcObject = localStream;
+        localVideo.classList.remove("hide");
+        if (camFlipBtn) camFlipBtn.classList.remove("hide");
+    } else {
+        if (localVideo) localVideo.classList.add("hide");
+        if (camFlipBtn) camFlipBtn.classList.add("hide");
+    }
+
+    startRingingSound();
+
+    const callRoomId = 'ldr_' + Math.random().toString(36).substring(2, 8) + '_' + Date.now();
+    let peer = null;
+
+    try {
+        peer = new Peer(callRoomId, {
+            debug: 0,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' }
+                ]
+            }
+        });
+    } catch (peerErr) {
+        console.error("PeerJS initialization error:", peerErr);
+        stopRingingSound();
+        localStream.getTracks().forEach(t => t.stop());
+        if (modal) modal.classList.add("hide");
+        alert("Failed to initialize secret call network. Please try again.");
+        return;
+    }
+
+    activeCallSession = {
+        peer: peer,
+        call: null,
+        localStream: localStream,
+        remoteStream: null,
+        remoteAudioEl: null,
+        isVideo: isVideo,
+        isCaller: true,
+        startTime: null,
+        timerInterval: null,
+        currentFacingMode: 'user',
+        timeoutTimer: null
+    };
+
+    peer.on('open', (id) => {
+        const currentOrigin = window.location.origin;
+        const currentPath = window.location.pathname.replace(/\/index\.html$/, '') || '';
+        const callUrl = `${currentOrigin}${currentPath}/?call=${encodeURIComponent(id)}&type=${type}`;
+
+        const callName = isVideo ? 'Video Call' : 'Voice Call';
+        const callIcon = isVideo ? '📹' : '📞';
+        const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+        const telegramText = `🚨 <b>Incoming Secret ${callName}!</b> ${callIcon}💕\n\n` +
+                             `👤 <b>From:</b> ${CONFIG.partnerName}\n` +
+                             `🕒 <b>Time:</b> <code>${timeStr}</code>\n\n` +
+                             `👉 <b><a href="${callUrl}">📲 TAP HERE TO ANSWER CALL</a></b>\n\n` +
+                             `<i>(Private end-to-end encrypted call. Zero logs on phone.)</i>`;
+
+        callTelegramApi('sendMessage', {
+            text: telegramText,
+            parse_mode: 'HTML'
+        }).catch(e => console.error("Call alert send error:", e));
+
+        activeCallSession.timeoutTimer = setTimeout(() => {
+            if (activeCallSession && !activeCallSession.startTime) {
+                if (statusLabel) statusLabel.textContent = `${CONFIG.yourName} is unavailable right now 🥺`;
+                stopRingingSound();
+                setTimeout(() => {
+                    endSecretCall(false);
+                }, 3000);
+            }
+        }, 60000);
+    });
+
+    peer.on('call', (incomingCall) => {
+        if (!activeCallSession) return;
+        clearTimeout(activeCallSession.timeoutTimer);
+        stopRingingSound();
+        playCallTone('connected');
+
+        activeCallSession.call = incomingCall;
+        incomingCall.answer(localStream);
+
+        incomingCall.on('stream', (remoteStream) => {
+            handleRemoteStream(remoteStream);
+        });
+
+        incomingCall.on('close', () => {
+            endSecretCall(false);
+        });
+
+        incomingCall.on('error', (err) => {
+            console.error("Call connection error:", err);
+            endSecretCall(false);
+        });
+    });
+
+    peer.on('error', (err) => {
+        console.error("PeerJS error:", err);
+        if (statusLabel) statusLabel.textContent = "Connecting to peer network...";
+    });
+}
+
+// Answer Secret Call (Callee: Yash opening ?call=...)
+async function answerIncomingSecretCall(callerPeerId, type = 'audio') {
+    if (activeCallSession) return;
+
+    const isVideo = type === 'video';
+    const modal = document.getElementById("secret-call-modal");
+    const statusLabel = document.getElementById("call-status-label");
+    const partnerTitle = document.getElementById("call-partner-title");
+    const partnerEmoji = document.getElementById("call-partner-emoji");
+    const timerDisplay = document.getElementById("call-timer-display");
+    const localVideo = document.getElementById("call-local-video");
+    const remoteVideo = document.getElementById("call-remote-video");
+    const avatarView = document.getElementById("call-audio-avatar-view");
+    const camFlipBtn = document.getElementById("call-cam-flip-btn");
+
+    if (modal) modal.classList.remove("hide");
+    if (timerDisplay) timerDisplay.classList.add("hide");
+    if (remoteVideo) remoteVideo.classList.add("hide");
+    if (avatarView) avatarView.classList.remove("hide");
+
+    if (partnerTitle) partnerTitle.textContent = `${CONFIG.partnerName} 🐱`;
+    if (partnerEmoji) partnerEmoji.textContent = "🐱";
+    if (statusLabel) statusLabel.textContent = `Connecting to ${CONFIG.partnerName}... 💕`;
+
+    let localStream = null;
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: isVideo ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false
+        });
+    } catch (err) {
+        console.error("Camera/Mic access error:", err);
+        alert(`Could not access your ${isVideo ? 'camera/microphone' : 'microphone'} to answer the call.`);
+        if (modal) modal.classList.add("hide");
+        return;
+    }
+
+    if (isVideo && localVideo) {
+        localVideo.srcObject = localStream;
+        localVideo.classList.remove("hide");
+        if (camFlipBtn) camFlipBtn.classList.remove("hide");
+    } else {
+        if (localVideo) localVideo.classList.add("hide");
+        if (camFlipBtn) camFlipBtn.classList.add("hide");
+    }
+
+    const myPeerId = 'ans_' + Math.random().toString(36).substring(2, 8) + '_' + Date.now();
+    let peer = null;
+    try {
+        peer = new Peer(myPeerId, {
+            debug: 0,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' }
+                ]
+            }
+        });
+    } catch (e) {
+        localStream.getTracks().forEach(t => t.stop());
+        if (modal) modal.classList.add("hide");
+        return;
+    }
+
+    activeCallSession = {
+        peer: peer,
+        call: null,
+        localStream: localStream,
+        remoteStream: null,
+        remoteAudioEl: null,
+        isVideo: isVideo,
+        isCaller: false,
+        startTime: null,
+        timerInterval: null,
+        currentFacingMode: 'user'
+    };
+
+    peer.on('open', () => {
+        if (statusLabel) statusLabel.textContent = `Connecting to ${CONFIG.partnerName}... 💖`;
+        const call = peer.call(callerPeerId, localStream);
+        activeCallSession.call = call;
+
+        call.on('stream', (remoteStream) => {
+            playCallTone('connected');
+            handleRemoteStream(remoteStream);
+        });
+
+        call.on('close', () => {
+            endSecretCall(false);
+        });
+
+        call.on('error', (err) => {
+            console.error("Call error:", err);
+            endSecretCall(false);
+        });
+    });
+
+    peer.on('error', (err) => {
+        console.error("Callee Peer error:", err);
+        if (statusLabel) statusLabel.textContent = "Connecting to peer network...";
+    });
+}
+
+function handleRemoteStream(remoteStream) {
+    if (!activeCallSession) return;
+    activeCallSession.remoteStream = remoteStream;
+
+    const statusLabel = document.getElementById("call-status-label");
+    const timerDisplay = document.getElementById("call-timer-display");
+    const remoteVideo = document.getElementById("call-remote-video");
+    const avatarView = document.getElementById("call-audio-avatar-view");
+
+    if (statusLabel) statusLabel.textContent = "Connected 💕";
+
+    if (!activeCallSession.remoteAudioEl) {
+        const audioEl = document.createElement("audio");
+        audioEl.autoplay = true;
+        audioEl.srcObject = remoteStream;
+        document.body.appendChild(audioEl);
+        activeCallSession.remoteAudioEl = audioEl;
+    }
+
+    if (activeCallSession.isVideo && remoteVideo) {
+        remoteVideo.srcObject = remoteStream;
+        remoteVideo.classList.remove("hide");
+        if (avatarView) avatarView.classList.add("hide");
+    }
+
+    activeCallSession.startTime = Date.now();
+    if (timerDisplay) {
+        timerDisplay.textContent = "00:00";
+        timerDisplay.classList.remove("hide");
+    }
+
+    if (activeCallSession.timerInterval) clearInterval(activeCallSession.timerInterval);
+    activeCallSession.timerInterval = setInterval(() => {
+        if (!activeCallSession || !activeCallSession.startTime) return;
+        const elapsedSec = Math.floor((Date.now() - activeCallSession.startTime) / 1000);
+        if (timerDisplay) timerDisplay.textContent = formatDuration(elapsedSec);
+    }, 1000);
+}
+
+function endSecretCall(notifyPartner = true) {
+    stopRingingSound();
+    playCallTone('ended');
+
+    let durationStr = "00:00";
+    let wasConnected = false;
+    let isVideoCall = false;
+
+    if (activeCallSession) {
+        isVideoCall = activeCallSession.isVideo;
+        if (activeCallSession.timeoutTimer) clearTimeout(activeCallSession.timeoutTimer);
+        if (activeCallSession.timerInterval) clearInterval(activeCallSession.timerInterval);
+
+        if (activeCallSession.startTime) {
+            wasConnected = true;
+            const elapsed = Math.floor((Date.now() - activeCallSession.startTime) / 1000);
+            durationStr = formatDuration(elapsed);
+        }
+
+        if (activeCallSession.localStream) {
+            activeCallSession.localStream.getTracks().forEach(t => t.stop());
+        }
+        if (activeCallSession.remoteStream) {
+            activeCallSession.remoteStream.getTracks().forEach(t => t.stop());
+        }
+        if (activeCallSession.remoteAudioEl) {
+            activeCallSession.remoteAudioEl.remove();
+        }
+        if (activeCallSession.call) {
+            try { activeCallSession.call.close(); } catch (e) {}
+        }
+        if (activeCallSession.peer) {
+            try { activeCallSession.peer.destroy(); } catch (e) {}
+        }
+
+        activeCallSession = null;
+    }
+
+    const modal = document.getElementById("secret-call-modal");
+    const localVideo = document.getElementById("call-local-video");
+    const remoteVideo = document.getElementById("call-remote-video");
+    const micBtn = document.getElementById("call-mic-toggle-btn");
+    const camBtn = document.getElementById("call-cam-toggle-btn");
+    const micIcon = document.getElementById("call-mic-icon");
+    const camIcon = document.getElementById("call-cam-icon");
+
+    if (modal) modal.classList.add("hide");
+    if (localVideo) { localVideo.srcObject = null; localVideo.classList.add("hide"); }
+    if (remoteVideo) { remoteVideo.srcObject = null; remoteVideo.classList.add("hide"); }
+    if (micBtn) micBtn.classList.remove("active-off");
+    if (camBtn) camBtn.classList.remove("active-off");
+    if (micIcon) micIcon.textContent = "🎤";
+    if (camIcon) camIcon.textContent = "📹";
+
+    if (window.history && window.history.replaceState) {
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+    }
+
+    if (wasConnected) {
+        const callLabel = `${isVideoCall ? '📹 Video Call' : '📞 Voice Call'} (${durationStr})`;
+        const newMsg = {
+            id: 'msg_call_' + Date.now(),
+            sender: CONFIG.partnerName,
+            text: callLabel,
+            timestamp: Date.now(),
+            isPartner: false,
+            type: 'text'
+        };
+        saveChatMessage(newMsg);
+        renderSecretChat();
+
+        if (notifyPartner) {
+            callTelegramApi('sendMessage', {
+                text: `📞 <i>Secret ${isVideoCall ? 'Video' : 'Voice'} Call ended • Duration: ${durationStr}</i>`,
+                parse_mode: 'HTML'
+            }).catch(() => {});
+        }
+    }
+}
+
+function setupCallListeners() {
+    const startVoiceBtn = document.getElementById("start-voice-call-btn");
+    const startVideoBtn = document.getElementById("start-video-call-btn");
+    const endCallBtn = document.getElementById("call-end-btn");
+    const micToggleBtn = document.getElementById("call-mic-toggle-btn");
+    const camToggleBtn = document.getElementById("call-cam-toggle-btn");
+    const camFlipBtn = document.getElementById("call-cam-flip-btn");
+    const callPanicBtn = document.getElementById("call-panic-btn");
+
+    if (startVoiceBtn) {
+        startVoiceBtn.addEventListener("click", () => startSecretCall('audio'));
+    }
+
+    if (startVideoBtn) {
+        startVideoBtn.addEventListener("click", () => startSecretCall('video'));
+    }
+
+    if (endCallBtn) {
+        endCallBtn.addEventListener("click", () => endSecretCall(true));
+    }
+
+    if (micToggleBtn) {
+        micToggleBtn.addEventListener("click", () => {
+            if (!activeCallSession || !activeCallSession.localStream) return;
+            const audioTrack = activeCallSession.localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !audioTrack.enabled;
+                micToggleBtn.classList.toggle("active-off", !audioTrack.enabled);
+                const icon = document.getElementById("call-mic-icon");
+                if (icon) icon.textContent = audioTrack.enabled ? "🎤" : "🔇";
+            }
+        });
+    }
+
+    if (camToggleBtn) {
+        camToggleBtn.addEventListener("click", async () => {
+            if (!activeCallSession || !activeCallSession.localStream) return;
+            const videoTracks = activeCallSession.localStream.getVideoTracks();
+            if (videoTracks.length > 0) {
+                const track = videoTracks[0];
+                track.enabled = !track.enabled;
+                camToggleBtn.classList.toggle("active-off", !track.enabled);
+                const icon = document.getElementById("call-cam-icon");
+                if (icon) icon.textContent = track.enabled ? "📹" : "🚫";
+            } else {
+                try {
+                    const vStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+                    });
+                    const newTrack = vStream.getVideoTracks()[0];
+                    activeCallSession.localStream.addTrack(newTrack);
+                    if (activeCallSession.call && activeCallSession.call.peerConnection) {
+                        const senders = activeCallSession.call.peerConnection.getSenders();
+                        const vSender = senders.find(s => s.track && s.track.kind === 'video');
+                        if (vSender) vSender.replaceTrack(newTrack);
+                        else activeCallSession.call.peerConnection.addTrack(newTrack, activeCallSession.localStream);
+                    }
+                    const localVid = document.getElementById("call-local-video");
+                    if (localVid) {
+                        localVid.srcObject = activeCallSession.localStream;
+                        localVid.classList.remove("hide");
+                    }
+                    activeCallSession.isVideo = true;
+                    if (camFlipBtn) camFlipBtn.classList.remove("hide");
+                } catch (e) {
+                    console.error("Camera upgrade failed:", e);
+                }
+            }
+        });
+    }
+
+    if (camFlipBtn) {
+        camFlipBtn.addEventListener("click", async () => {
+            if (!activeCallSession || !activeCallSession.localStream) return;
+            const currentMode = activeCallSession.currentFacingMode || 'user';
+            const newMode = currentMode === 'user' ? 'environment' : 'user';
+            activeCallSession.currentFacingMode = newMode;
+
+            try {
+                const newStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: newMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+                });
+                const newTrack = newStream.getVideoTracks()[0];
+                const oldTrack = activeCallSession.localStream.getVideoTracks()[0];
+                if (oldTrack) {
+                    activeCallSession.localStream.removeTrack(oldTrack);
+                    oldTrack.stop();
+                }
+                activeCallSession.localStream.addTrack(newTrack);
+                if (activeCallSession.call && activeCallSession.call.peerConnection) {
+                    const sender = activeCallSession.call.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) sender.replaceTrack(newTrack);
+                }
+                const localVid = document.getElementById("call-local-video");
+                if (localVid) localVid.srcObject = activeCallSession.localStream;
+            } catch (err) {
+                console.error("Camera switch error:", err);
+            }
+        });
+    }
+
+    if (callPanicBtn) {
+        callPanicBtn.addEventListener("click", () => {
+            endSecretCall(false);
+            const panicBtn = document.getElementById("panic-btn");
+            if (panicBtn) panicBtn.click();
+        });
+    }
+}
+
+function checkIncomingCallUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const callerId = params.get('call');
+    const callType = params.get('type') || 'audio';
+
+    if (!callerId) return;
+
+    const love = document.getElementById("love-container");
+    const isUnlocked = love && !love.classList.contains("hide");
+
+    if (isUnlocked) {
+        answerIncomingSecretCall(callerId, callType);
+    } else {
+        openUnlockModal();
+        const hint = document.querySelector(".modal-hint");
+        if (hint) {
+            hint.innerHTML = `<span style="color:#f472b6; font-weight:600;">📞 Incoming Secret Call from ${CONFIG.partnerName}!</span><br>Enter passcode to answer:`;
+        }
+        window.pendingIncomingCall = { callerId, callType };
+    }
 }
 
 if (document.readyState === "loading") {
