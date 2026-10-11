@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/photo.js": {
+      "includeFiles": "api/photos/**"
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",

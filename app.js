@@ -18,6 +18,69 @@ const CONFIG = {
     letterParagraphs: []
 };
 
+// Environment Helper: Detects offline/local static testing (e.g. VS Code Live Server)
+function isLocalStaticEnvironment() {
+    return (
+        window.location.protocol === 'file:' ||
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === '0.0.0.0' ||
+        window.location.hostname.startsWith('192.168.') ||
+        window.location.hostname.startsWith('10.')
+    );
+}
+
+// Encrypted Secret Letter Bundle (Zero plaintext secrets in client source code; protected with AES-GCM)
+const ENCRYPTED_LETTER_VAULT = {
+    salt: "HAfCAHDitZQ99tm1jOCxYw==",
+    iv: "HfNpSUVAnqMWp3bO",
+    tag: "PXm1nQD9YVSA1NBWgH1taw==",
+    ciphertext: "flxrjrNh5ueppZClbcuEj2JEhpWEZCeJs3aMMMJYdi2EDU/r5nNswBBEcquYpEI771b0cDkPImxmDV5pLx8Hn+q669qtllooe4+NVurNot4XrvmsPXBnkXneX1tywWDNBVrRD01TIosCWQ+XEV370geRBY1o9L4eDiqD/+AeN1+XNwsgvymd4n4BefFOpWIqTLJ1nk0VMQTHbEsWqMl5yQCTJlHGmT55aYfeq06wm1F2zdV7DAnw+OcO0irkWTmoxmkUv3PpP8bsq2We1RIh0zFZxIS4rlSXHmqHAf13WZ4YtisjLJcJWyY4WJRsNN/6oChOhaviLDK9lTjG11FAP19EJj5xTFXv+2ymPKBgiMpFp7r7Xg1TJyYPQiOJIaKZbIuumUn0vErtcyt2rTbGvCfM+/SbJdKJBGDlsXxA0zeJwjBB2C8vLA+/tx9mdDly07dLP1uJHHsY3ZITu/pjq7XksLnW0B1D7YLMF9mogwgFW9SA0yFVYmEven0BUKdjj6ybULzbWBJLLYa1Ki9hQHOe00x2GA+epr+7F6NMEMDNFgbkeZgir6uLg5Qpfz2Tk3JukDAbCbdqAzFeGGxRI5x6mtvD+L0l8zLAsBQt10NWzwNEx0p5coFouN/MMYHIxXp0Rww79SAU74vy0mx4WK9SHTFYRd9NArc407QcnTlD5lRkukfHkfC3ba6P"
+};
+
+async function decryptLocalVault(passcode) {
+    if (!window.crypto || !window.crypto.subtle) {
+        throw new Error("Web Crypto not supported");
+    }
+    const saltBytes = Uint8Array.from(atob(ENCRYPTED_LETTER_VAULT.salt), c => c.charCodeAt(0));
+    const ivBytes = Uint8Array.from(atob(ENCRYPTED_LETTER_VAULT.iv), c => c.charCodeAt(0));
+    const tagBytes = Uint8Array.from(atob(ENCRYPTED_LETTER_VAULT.tag), c => c.charCodeAt(0));
+    const ctBytes = Uint8Array.from(atob(ENCRYPTED_LETTER_VAULT.ciphertext), c => c.charCodeAt(0));
+
+    const combined = new Uint8Array(ctBytes.length + tagBytes.length);
+    combined.set(ctBytes);
+    combined.set(tagBytes, ctBytes.length);
+
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(passcode),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveKey']
+    );
+
+    const derivedKey = await crypto.subtle.deriveKey(
+        {
+            name: 'PBKDF2',
+            salt: saltBytes,
+            iterations: 50000,
+            hash: 'SHA-256'
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+    );
+
+    const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: ivBytes },
+        derivedKey,
+        combined
+    );
+
+    return JSON.parse(new TextDecoder().decode(decrypted));
+}
+
 // Session Token Manager
 function getSessionToken() {
     return sessionStorage.getItem('studyflow_auth_token') || localStorage.getItem('studyflow_auth_token') || '';
@@ -44,8 +107,14 @@ async function callTelegramApi(action, data = {}) {
             headers: headers,
             body: JSON.stringify({ action, ...data })
         });
+        if (!res.ok && res.status === 404 && isLocalStaticEnvironment()) {
+            return { ok: true, localMock: true, result: { message_id: Date.now() } };
+        }
         return await res.json();
     } catch (err) {
+        if (isLocalStaticEnvironment()) {
+            return { ok: true, localMock: true, result: { message_id: Date.now() } };
+        }
         console.error(`Telegram API error (${action}):`, err);
         return { ok: false, error: err.message };
     }
@@ -292,19 +361,60 @@ async function verifyPasscode() {
     }
 
     try {
-        const res = await fetch('/api/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ passcode: entered })
-        });
-        const data = await res.json();
+        let isLocalFallback = false;
+        let data = null;
 
-        if (res.status === 429) {
-            handlePasscodeError(data.error || "Too many failed attempts. Locked for 15 minutes.");
-            return;
+        // 1. Try serverless API verification (used on production Vercel deployment)
+        try {
+            const res = await fetch('/api/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ passcode: entered })
+            });
+
+            if (res.status === 429) {
+                const errData = await res.json().catch(() => ({}));
+                handlePasscodeError(errData.error || "Too many failed attempts. Locked for 15 minutes.");
+                return;
+            }
+
+            if (res.ok) {
+                data = await res.json();
+            } else if (res.status === 404 && isLocalStaticEnvironment()) {
+                // Live Server (port 5500) has no Node.js backend; trigger local cryptographic fallback
+                isLocalFallback = true;
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                handlePasscodeError(errData.error || "Incorrect passcode. Please try again.");
+                return;
+            }
+        } catch (netErr) {
+            if (isLocalStaticEnvironment()) {
+                isLocalFallback = true;
+            } else {
+                throw netErr;
+            }
         }
 
-        if (data.ok && data.secret) {
+        // 2. Local Fallback: Decrypt AES-GCM letter vault using entered passcode
+        if (isLocalFallback) {
+            try {
+                const decryptedParagraphs = await decryptLocalVault(entered);
+                data = {
+                    ok: true,
+                    sessionToken: 'local_dev_session_' + Date.now(),
+                    secret: {
+                        letterParagraphs: decryptedParagraphs
+                    }
+                };
+                sessionStorage.setItem('studyflow_cached_letter', JSON.stringify(decryptedParagraphs));
+            } catch (decErr) {
+                handlePasscodeError("Incorrect passcode. Please try again.");
+                return;
+            }
+        }
+
+        if (data && data.ok && data.secret) {
             if (data.sessionToken) {
                 setSessionToken(data.sessionToken);
             }
@@ -339,7 +449,7 @@ async function verifyPasscode() {
                 checkTelegramReplies(); // Fresh check
             }, 400);
         } else {
-            handlePasscodeError(data.error || "Incorrect passcode. Please try again.");
+            handlePasscodeError((data && data.error) || "Incorrect passcode. Please try again.");
         }
     } catch (e) {
         console.error("Passcode verification error:", e);
@@ -1889,6 +1999,9 @@ const PHOTO_COLLECTION = [
 ];
 
 function getPhotoUrl(id) {
+    if (isLocalStaticEnvironment()) {
+        return `api/photos/childhood_${id}.png`;
+    }
     const token = getSessionToken();
     return `/api/photo?id=${id}&token=${encodeURIComponent(token)}`;
 }
@@ -2022,6 +2135,17 @@ function initApp() {
     // Auto-restore session if previously authenticated
     const token = getSessionToken();
     if (token) {
+        if (isLocalStaticEnvironment()) {
+            try {
+                const cached = sessionStorage.getItem('studyflow_cached_letter');
+                if (cached) {
+                    CONFIG.letterParagraphs = JSON.parse(cached);
+                    initializeSurpriseContent();
+                    loadProtectedPhotos();
+                    renderSecretChat();
+                }
+            } catch (e) {}
+        }
         fetch('/api/verify', {
             headers: { 'Authorization': `Bearer ${token}` }
         })
