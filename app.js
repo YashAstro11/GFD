@@ -4,13 +4,6 @@
 const CONFIG = {
     partnerName: "Mukku",               // Your girlfriend's name (displays in heading/letter)
     yourName: "Yash",                   // Your name (signature on the letter)
-    passcode: "2603",                   // The secret code to unlock the private page (e.g. your anniversary date)
-
-    // SECRET TELEGRAM UPDATES (Ninja Mode)
-    // 1. Search @BotFather on Telegram, send /newbot, create a bot to get your Token.
-    // 2. Search @userinfobot on Telegram, send /start to get your Chat ID.
-    telegramBotToken: "8234605358:AAFMtO2nTnFS-UYOIMpUyb-K43o2cu4ew3E",               // Paste your bot token here
-    telegramChatId: "8935359444",                 // Paste your chat ID here
 
     // LDR Settings
     yourLocation: "Lucknow",            // Where you live
@@ -21,14 +14,24 @@ const CONFIG = {
 
     whatsappNumber: "919919480574",     // Your phone number with country code (no +, spaces, or dashes)
 
-    // Heartfelt Letter Paragraphs
-    letterParagraphs: [
-        "meri mukku darling my love my life mujhe pata hai girlfrind ek bohot chota word hai jo tumhe define kar payega lekin tum mere liye bohot jyada khaas ho tumhara meri life me hona bhagwan ke hone se kam nhi hai",
-        "mujhe pata hai abhi hum door hai lekin dono mehnat krte rhenge aur dono ek doosre ka saath hasil kr lenege khoob sara ghoomenge khoob sara khayenge aur khoob sara pyaar kiya krenge",
-        "my love my wife my universe i love you bohot bohot bohot bohot saraa",
-        "love you meri jaan mera babu meri shona meri cuta patuta"
-    ]
+    // Heartfelt Letter Paragraphs (Safely loaded from secure serverless backend upon unlock)
+    letterParagraphs: []
 };
+
+// Central secure API client for serverless Telegram proxy
+async function callTelegramApi(action, data = {}) {
+    try {
+        const res = await fetch('/api/telegram', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, ...data })
+        });
+        return await res.json();
+    } catch (err) {
+        console.error(`Telegram API error (${action}):`, err);
+        return { ok: false, error: err.message };
+    }
+}
 
 // =========================================================================
 // 1. DISGUISE PAGE - FOCUS TIMER & TASKS
@@ -242,7 +245,6 @@ function closeUnlockModal() {
 }
 
 window.markMessagesAsSeen = function() {
-    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) return;
     const history = getChatHistory();
     let updated = false;
 
@@ -250,14 +252,9 @@ window.markMessagesAsSeen = function() {
         if (msg.isPartner && !msg.botReacted && msg.telegramMessageId) {
             msg.botReacted = true;
             updated = true;
-            fetch(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/setMessageReaction`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: CONFIG.telegramChatId,
-                    message_id: msg.telegramMessageId,
-                    reaction: [{ type: "emoji", emoji: "👀" }]
-                })
+            callTelegramApi('setMessageReaction', {
+                message_id: msg.telegramMessageId,
+                reaction: [{ type: "emoji", emoji: "👀" }]
             }).catch(e => console.error("Reaction failed:", e));
         }
     });
@@ -267,35 +264,70 @@ window.markMessagesAsSeen = function() {
     }
 };
 
-function verifyPasscode() {
+async function verifyPasscode() {
     const entered = passcodeInput.value.trim();
-    if (entered === CONFIG.passcode) {
-        // Correct passcode! Transition to Love Space
-        closeUnlockModal();
+    if (!entered) return;
 
-        // Clear unread count since she is viewing the secret vault
-        localStorage.setItem('studyflow_unread_count', "0");
-        updateUnreadIndicator();
+    if (verifyPasscodeBtn) {
+        verifyPasscodeBtn.disabled = true;
+        verifyPasscodeBtn.textContent = "...";
+    }
 
-        // Add fade out to disguise, then show love container
-        disguiseContainer.classList.add("fade-out");
+    try {
+        const res = await fetch('/api/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ passcode: entered })
+        });
+        const data = await res.json();
 
-        setTimeout(() => {
-            disguiseContainer.classList.add("hide");
-            loveContainer.classList.remove("hide");
-            loveContainer.classList.add("fade-in");
-            if (typeof window.markMessagesAsSeen === 'function') window.markMessagesAsSeen();
-            renderSecretChat();
-            checkTelegramReplies(); // Fresh check
-        }, 400);
-    } else {
-        // Incorrect passcode
-        passcodeError.classList.remove("hide");
-        passcodeInput.value = "";
-        passcodeInput.focus();
+        if (data.ok && data.secret) {
+            // Populate secret love letter paragraphs safely
+            if (data.secret.letterParagraphs) {
+                CONFIG.letterParagraphs = data.secret.letterParagraphs;
+                initializeSurpriseContent();
+            }
 
-        // Shake modal card slightly for premium feel
-        const card = passcodeModal.querySelector(".modal-card");
+            // Correct passcode! Transition to Love Space
+            closeUnlockModal();
+
+            // Clear unread count since she is viewing the secret vault
+            localStorage.setItem('studyflow_unread_count', "0");
+            updateUnreadIndicator();
+
+            // Add fade out to disguise, then show love container
+            disguiseContainer.classList.add("fade-out");
+
+            setTimeout(() => {
+                disguiseContainer.classList.add("hide");
+                loveContainer.classList.remove("hide");
+                loveContainer.classList.add("fade-in");
+                if (typeof window.markMessagesAsSeen === 'function') window.markMessagesAsSeen();
+                renderSecretChat();
+                checkTelegramReplies(); // Fresh check
+            }, 400);
+        } else {
+            handlePasscodeError();
+        }
+    } catch (e) {
+        console.error("Passcode verification error:", e);
+        handlePasscodeError();
+    } finally {
+        if (verifyPasscodeBtn) {
+            verifyPasscodeBtn.disabled = false;
+            verifyPasscodeBtn.textContent = "Verify";
+        }
+    }
+}
+
+function handlePasscodeError() {
+    passcodeError.classList.remove("hide");
+    passcodeInput.value = "";
+    passcodeInput.focus();
+
+    // Shake modal card slightly for feedback
+    const card = passcodeModal.querySelector(".modal-card");
+    if (card) {
         card.classList.add("shake");
         setTimeout(() => card.classList.remove("shake"), 500);
     }
@@ -578,43 +610,10 @@ const STICKER_CATALOG = {
     ]
 };
 
-// In-memory cache for Telegram file URLs
-const telegramFileUrlCache = {};
-const audioBlobCache = {};
-
+// Resolve Telegram file URL via secure proxy (no token exposure)
 async function resolveTelegramFileUrl(fileId) {
-    if (!fileId || !CONFIG.telegramBotToken) return null;
-    const now = Date.now();
-    if (telegramFileUrlCache[fileId] && (now - telegramFileUrlCache[fileId].ts < 3000000)) return telegramFileUrlCache[fileId].url;
-
-    try {
-        const localCache = JSON.parse(localStorage.getItem('studyflow_file_cache_v2') || '{}');
-        if (localCache[fileId] && (now - localCache[fileId].ts < 3000000)) {
-            telegramFileUrlCache[fileId] = localCache[fileId];
-            return localCache[fileId].url;
-        }
-    } catch (e) {}
-
-    try {
-        const res = await fetch(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/getFile?file_id=${fileId}`);
-        const data = await res.json();
-        if (data.ok && data.result && data.result.file_path) {
-            const fileUrl = `https://api.telegram.org/file/bot${CONFIG.telegramBotToken}/${data.result.file_path}`;
-            const cacheObj = { url: fileUrl, ts: now };
-            telegramFileUrlCache[fileId] = cacheObj;
-            
-            try {
-                const localCache = JSON.parse(localStorage.getItem('studyflow_file_cache_v2') || '{}');
-                localCache[fileId] = cacheObj;
-                localStorage.setItem('studyflow_file_cache_v2', JSON.stringify(localCache));
-            } catch (e) {}
-
-            return fileUrl;
-        }
-    } catch (e) {
-        console.error("Failed to resolve Telegram file URL:", e);
-    }
-    return null;
+    if (!fileId) return null;
+    return `/api/file?file_id=${encodeURIComponent(fileId)}`;
 }
 
 function getChatHistory() {
@@ -869,31 +868,16 @@ function sendSecretUpdate(message) {
     };
     saveChatMessage(newMsg);
 
-    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
-        console.warn("Sync inactive: Missing credentials.");
-        if (typeof cancelReply !== 'undefined') cancelReply();
-        return;
-    }
-    
-    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`;
-    const data = {
-        chat_id: CONFIG.telegramChatId,
+    const payload = {
         text: `💌 Secret Update from ${CONFIG.partnerName}:\n\n${cleanMsg}`
     };
 
     if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
-        data.reply_to_message_id = parseInt(activeReplyState.telegramId);
+        payload.reply_to_message_id = parseInt(activeReplyState.telegramId);
     }
     if (typeof cancelReply !== 'undefined') cancelReply();
 
-    fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data)
-    })
-    .then(response => response.json())
+    callTelegramApi('sendMessage', payload)
     .then(data => {
         if (data && data.ok && data.result && data.result.message_id) {
             const history = getChatHistory();
@@ -970,44 +954,35 @@ function sendSecretVoice(audioBlob) {
     };
     saveChatMessage(newMsg);
 
-    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
-        console.warn("Sync inactive: Missing credentials.");
-        if (typeof cancelReply !== 'undefined') cancelReply();
-        return;
-    }
-
-    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendVoice`;
-    const formData = new FormData();
-    formData.append('chat_id', CONFIG.telegramChatId);
-    formData.append('caption', `💌 Voice Note from ${CONFIG.partnerName}`);
-    formData.append('voice', audioBlob, 'voice.oga');
-
-    if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
-        formData.append('reply_to_message_id', parseInt(activeReplyState.telegramId));
-    }
+    const replyId = (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId)
+        ? parseInt(activeReplyState.telegramId) : undefined;
     if (typeof cancelReply !== 'undefined') cancelReply();
 
-    fetch(url, {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data && data.ok && data.result && data.result.message_id) {
-            const history = getChatHistory();
-            const item = history.find(m => m.id === newMsg.id);
-            if (item) {
-                item.telegramMessageId = data.result.message_id;
-                if (data.result.voice) {
-                    item.stickerFileId = data.result.voice.file_id;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        callTelegramApi('sendVoice', {
+            voice: reader.result,
+            caption: `💌 Voice Note from ${CONFIG.partnerName}`,
+            reply_to_message_id: replyId
+        })
+        .then(data => {
+            if (data && data.ok && data.result && data.result.message_id) {
+                const history = getChatHistory();
+                const item = history.find(m => m.id === newMsg.id);
+                if (item) {
+                    item.telegramMessageId = data.result.message_id;
+                    if (data.result.voice) {
+                        item.stickerFileId = data.result.voice.file_id;
+                    }
+                    localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+                    renderSecretChat();
                 }
-                localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
-                renderSecretChat();
             }
-        }
-        setTimeout(checkTelegramReplies, 1500);
-    })
-    .catch(error => console.error("Cloud sync error."));
+            setTimeout(checkTelegramReplies, 1500);
+        })
+        .catch(error => console.error("Cloud sync error."));
+    };
+    reader.readAsDataURL(audioBlob);
 }
 
 // === CAMERA & SELFIE LOGIC ===
@@ -1202,46 +1177,37 @@ function sendSecretPhoto(photoBlob, caption = "Photo 📸") {
     saveChatMessage(newMsg);
     playTapTone("Heart");
 
-    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
-        console.warn("Sync inactive: Missing credentials.");
-        if (typeof cancelReply !== 'undefined') cancelReply();
-        return;
-    }
-
-    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendPhoto`;
-    const formData = new FormData();
-    formData.append('chat_id', CONFIG.telegramChatId);
-    formData.append('photo', photoBlob, 'mukku_photo.jpg');
-    formData.append('caption', `📸 Secret Photo from ${CONFIG.partnerName}! 💕`);
-
-    if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
-        formData.append('reply_to_message_id', parseInt(activeReplyState.telegramId));
-    }
+    const replyId = (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId)
+        ? parseInt(activeReplyState.telegramId) : undefined;
     if (typeof cancelReply !== 'undefined') cancelReply();
 
-    fetch(url, {
-        method: 'POST',
-        body: formData
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data && data.ok && data.result && data.result.message_id) {
-            const history = getChatHistory();
-            const item = history.find(m => m.id === newMsg.id);
-            if (item) {
-                item.telegramMessageId = data.result.message_id;
-                if (data.result.photo && data.result.photo.length > 0) {
-                    item.stickerFileId = data.result.photo[data.result.photo.length - 1].file_id;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        callTelegramApi('sendPhoto', {
+            photo: reader.result,
+            caption: `📸 Secret Photo from ${CONFIG.partnerName}! 💕`,
+            reply_to_message_id: replyId
+        })
+        .then(data => {
+            if (data && data.ok && data.result && data.result.message_id) {
+                const history = getChatHistory();
+                const item = history.find(m => m.id === newMsg.id);
+                if (item) {
+                    item.telegramMessageId = data.result.message_id;
+                    if (data.result.photo && data.result.photo.length > 0) {
+                        item.stickerFileId = data.result.photo[data.result.photo.length - 1].file_id;
+                    }
+                    localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
+                    renderSecretChat();
                 }
-                localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
-                renderSecretChat();
             }
-        }
-        setTimeout(checkTelegramReplies, 1500);
-    })
-    .catch(err => {
-        console.error("Error sending photo to Telegram:", err);
-    });
+            setTimeout(checkTelegramReplies, 1500);
+        })
+        .catch(err => {
+            console.error("Error sending photo to Telegram:", err);
+        });
+    };
+    reader.readAsDataURL(photoBlob);
 }
 
 function sendSecretEdit(text) {
@@ -1260,23 +1226,9 @@ function sendSecretEdit(text) {
         renderSecretChat();
     }
 
-    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
-        console.warn("Sync inactive: Missing credentials.");
-        if (typeof cancelEdit !== 'undefined') cancelEdit();
-        return;
-    }
-    
-    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/editMessageText`;
-    const data = {
-        chat_id: CONFIG.telegramChatId,
+    callTelegramApi('editMessageText', {
         message_id: parseInt(activeEditState.telegramId),
         text: `💌 Secret Update from ${CONFIG.partnerName}:\n\n${cleanMsg}`
-    };
-
-    fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
     }).catch(error => console.error("Cloud edit error."));
 
     if (typeof cancelEdit !== 'undefined') cancelEdit();
@@ -1310,27 +1262,15 @@ function sendSecretSticker(sticker) {
     if (picker) picker.classList.add("hide");
     if (toggleBtn) toggleBtn.classList.remove("active");
 
-    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
-        console.warn("Sync inactive: Missing credentials.");
-        return;
-    }
+    const replyId = (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId)
+        ? parseInt(activeReplyState.telegramId) : undefined;
+    if (typeof cancelReply !== 'undefined') cancelReply();
 
     if (isEmoji) {
-        const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`;
-        const data = {
-            chat_id: CONFIG.telegramChatId,
-            text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji} ${sticker.name ? '(' + sticker.name + ')' : ''}`
-        };
-        if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
-            data.reply_to_message_id = parseInt(activeReplyState.telegramId);
-        }
-        if (typeof cancelReply !== 'undefined') cancelReply();
-        fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+        callTelegramApi('sendMessage', {
+            text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji} ${sticker.name ? '(' + sticker.name + ')' : ''}`,
+            reply_to_message_id: replyId
         })
-        .then(res => res.json())
         .then(data => {
             if (data && data.ok && data.result && data.result.message_id) {
                 const history = getChatHistory();
@@ -1344,36 +1284,19 @@ function sendSecretSticker(sticker) {
         })
         .catch(e => console.error("Cloud sync error."));
     } else {
-        const endpoint = sticker.isAnim ? 'sendAnimation' : 'sendPhoto';
-        const paramKey = sticker.isAnim ? 'animation' : 'photo';
-        const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/${endpoint}`;
-        const data = {
-            chat_id: CONFIG.telegramChatId,
-            [paramKey]: sticker.url,
-            caption: `💌 Sticker from ${CONFIG.partnerName}: ${sticker.emoji || '💕'} ${sticker.name || ''}`
+        const action = sticker.isAnim ? 'sendAnimation' : 'sendPhoto';
+        const payload = {
+            [sticker.isAnim ? 'animation' : 'photo']: sticker.url,
+            caption: `💌 Sticker from ${CONFIG.partnerName}: ${sticker.emoji || '💕'} ${sticker.name || ''}`,
+            reply_to_message_id: replyId
         };
-        if (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId) {
-            data.reply_to_message_id = parseInt(activeReplyState.telegramId);
-        }
-        if (typeof cancelReply !== 'undefined') cancelReply();
-        fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        })
-        .then(res => res.json())
+        callTelegramApi(action, payload)
         .then(resData => {
             if (!resData.ok) {
                 console.warn("Media send failed, falling back to message:", resData);
-                fetch(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: CONFIG.telegramChatId,
-                        text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji || '💖'} ${sticker.name || ''}\n${sticker.url}`
-                    })
+                callTelegramApi('sendMessage', {
+                    text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji || '💖'} ${sticker.name || ''}\n${sticker.url}`
                 })
-                .then(r => r.json())
                 .then(rData => {
                     if (rData && rData.ok && rData.result && rData.result.message_id) {
                         const history = getChatHistory();
@@ -1541,14 +1464,11 @@ let isCheckingReplies = false;
 
 function checkTelegramReplies() {
     if (isCheckingReplies) return;
-    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) return;
 
     let lastOffset = parseInt(localStorage.getItem('studyflow_last_offset') || "0");
-    const allowed = encodeURIComponent('["message", "edited_message", "message_reaction"]');
-    const url = `https://api.telegram.org/bot${CONFIG.telegramBotToken}/getUpdates?offset=${lastOffset}&allowed_updates=${allowed}`;
-
     isCheckingReplies = true;
-    fetch(url)
+
+    fetch(`/api/telegram?action=getUpdates&offset=${lastOffset}`)
         .then(res => res.json())
         .then(data => {
             if (data.ok && Array.isArray(data.result) && data.result.length > 0) {
@@ -1561,12 +1481,11 @@ function checkTelegramReplies() {
                         maxUpdateId = update.update_id + 1;
                     }
 
-                    // Strict Security: Only accept messages from Yash's Telegram Chat ID
                     const msg = update.message;
                     const editedMsg = update.edited_message;
                     const reactionUpdate = update.message_reaction;
                     
-                    if (reactionUpdate && String(reactionUpdate.chat && reactionUpdate.chat.id) === String(CONFIG.telegramChatId)) {
+                    if (reactionUpdate) {
                         const itemIndex = history.findIndex(m => m.telegramMessageId === reactionUpdate.message_id);
                         if (itemIndex !== -1) {
                             if (reactionUpdate.new_reaction && reactionUpdate.new_reaction.length > 0) {
@@ -1579,7 +1498,7 @@ function checkTelegramReplies() {
                         }
                     }
 
-                    if (editedMsg && String(editedMsg.chat && editedMsg.chat.id) === String(CONFIG.telegramChatId)) {
+                    if (editedMsg) {
                         const itemIndex = history.findIndex(m => m.telegramMessageId === editedMsg.message_id);
                         if (itemIndex !== -1) {
                             if (editedMsg.text) {
@@ -1591,7 +1510,7 @@ function checkTelegramReplies() {
                         }
                     }
 
-                    if (msg && String(msg.chat && msg.chat.id) === String(CONFIG.telegramChatId)) {
+                    if (msg) {
                         const newMsgId = 't_' + update.update_id;
                         if (!history.some(m => m.id === newMsgId)) {
                             const time = msg.date ? msg.date * 1000 : Date.now();
@@ -1610,7 +1529,7 @@ function checkTelegramReplies() {
                                     sender: CONFIG.yourName,
                                     type: 'sticker',
                                     stickerFileId: targetFileId,
-                                    stickerUrl: '',
+                                    stickerUrl: targetFileId ? `/api/file?file_id=${encodeURIComponent(targetFileId)}` : '',
                                     stickerEmoji: sticker.emoji || "💖",
                                     text: sticker.emoji || "Sticker",
                                     timestamp: time,
@@ -1618,20 +1537,6 @@ function checkTelegramReplies() {
                                 };
                                 history.push(newMsg);
                                 newPartnerMessages++;
-
-                                if (targetFileId) {
-                                    resolveTelegramFileUrl(targetFileId).then(fileUrl => {
-                                        if (fileUrl) {
-                                            const curHistory = getChatHistory();
-                                            const item = curHistory.find(m => m.id === newMsgId);
-                                            if (item) {
-                                                item.stickerUrl = fileUrl;
-                                                localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
-                                                renderSecretChat();
-                                            }
-                                        }
-                                    });
-                                }
                             } else if (msg.photo && msg.photo.length > 0) {
                                 // 2. Yash sent a Photo
                                 const photo = msg.photo[msg.photo.length - 1];
@@ -1642,25 +1547,13 @@ function checkTelegramReplies() {
                                     sender: CONFIG.yourName,
                                     type: 'photo',
                                     stickerFileId: photo.file_id,
-                                    stickerUrl: '',
+                                    stickerUrl: `/api/file?file_id=${encodeURIComponent(photo.file_id)}`,
                                     text: msg.caption ? msg.caption.trim() : "",
                                     timestamp: time,
                                     isPartner: true
                                 };
                                 history.push(newMsg);
                                 newPartnerMessages++;
-
-                                resolveTelegramFileUrl(photo.file_id).then(fileUrl => {
-                                    if (fileUrl) {
-                                        const curHistory = getChatHistory();
-                                        const item = curHistory.find(m => m.id === newMsgId);
-                                        if (item) {
-                                            item.stickerUrl = fileUrl;
-                                            localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
-                                            renderSecretChat();
-                                        }
-                                    }
-                                });
                             } else if (msg.animation) {
                                 // 3. Yash sent an Animation / GIF
                                 const anim = msg.animation;
@@ -1672,7 +1565,7 @@ function checkTelegramReplies() {
                                     sender: CONFIG.yourName,
                                     type: 'sticker',
                                     stickerFileId: targetFileId,
-                                    stickerUrl: '',
+                                    stickerUrl: targetFileId ? `/api/file?file_id=${encodeURIComponent(targetFileId)}` : '',
                                     stickerEmoji: "✨",
                                     text: msg.caption ? msg.caption.trim() : "GIF",
                                     timestamp: time,
@@ -1680,20 +1573,6 @@ function checkTelegramReplies() {
                                 };
                                 history.push(newMsg);
                                 newPartnerMessages++;
-
-                                if (targetFileId) {
-                                    resolveTelegramFileUrl(targetFileId).then(fileUrl => {
-                                        if (fileUrl) {
-                                            const curHistory = getChatHistory();
-                                            const item = curHistory.find(m => m.id === newMsgId);
-                                            if (item) {
-                                                item.stickerUrl = fileUrl;
-                                                localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
-                                                renderSecretChat();
-                                            }
-                                        }
-                                    });
-                                }
                             } else if (msg.voice || msg.audio) {
                                 // 4. Yash sent a Voice Note or Audio
                                 const audio = msg.voice || msg.audio;
@@ -1704,25 +1583,13 @@ function checkTelegramReplies() {
                                     sender: CONFIG.yourName,
                                     type: 'voice',
                                     stickerFileId: audio.file_id,
-                                    stickerUrl: '',
+                                    stickerUrl: `/api/file?file_id=${encodeURIComponent(audio.file_id)}`,
                                     text: "Voice Note 🎤",
                                     timestamp: time,
                                     isPartner: true
                                 };
                                 history.push(newMsg);
                                 newPartnerMessages++;
-
-                                resolveTelegramFileUrl(audio.file_id).then(fileUrl => {
-                                    if (fileUrl) {
-                                        const curHistory = getChatHistory();
-                                        const item = curHistory.find(m => m.id === newMsgId);
-                                        if (item) {
-                                            item.stickerUrl = fileUrl;
-                                            localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
-                                            renderSecretChat();
-                                        }
-                                    }
-                                });
                             } else if (msg.text) {
                                 // 5. Yash sent a Text message
                                 const text = msg.text.trim();
@@ -1850,16 +1717,8 @@ if (secretSendBtn && secretReplyInput) {
         // Send typing action at most once every 4 seconds
         if (now - lastTypingTime > 4000 && secretReplyInput.value.trim().length > 0) {
             lastTypingTime = now;
-            if (CONFIG.telegramBotToken && CONFIG.telegramChatId) {
-                fetch(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendChatAction`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: CONFIG.telegramChatId,
-                        action: 'typing'
-                    })
-                }).catch(e => console.error("Error sending typing action", e));
-            }
+            callTelegramApi('sendChatAction', { chatAction: 'typing' })
+                .catch(e => console.error("Error sending typing action", e));
         }
     };
 
@@ -1899,21 +1758,10 @@ if (clearChatBtn) {
 // 9. SILENT TELEGRAM INSTANT NOTIFICATIONS & STATUS
 // =========================================================================
 function notifyTelegram(text, options = {}) {
-    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) return Promise.resolve(null);
-    return fetch(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            chat_id: CONFIG.telegramChatId,
-            text: text,
-            parse_mode: options.parseMode || 'HTML',
-            disable_notification: options.silent || false
-        })
-    })
-    .then(r => r.json())
-    .catch(err => {
-        console.log("Notify error", err);
-        return null;
+    return callTelegramApi('sendMessage', {
+        text: text,
+        parse_mode: options.parseMode || 'HTML',
+        disable_notification: options.silent || false
     });
 }
 
