@@ -13,6 +13,7 @@ const CONFIG = {
     nextMeetDate: "2026-09-27",         // YYYY-MM-DD - Next time you'll see each other (set to empty "" to hide countdown)
 
     whatsappNumber: "919919480574",     // Your phone number with country code (no +, spaces, or dashes)
+    liveSiteUrl: "",                    // Live Vercel website URL (e.g. https://your-app.vercel.app)
 
     // Heartfelt Letter Paragraphs (Safely loaded from secure serverless backend upon unlock)
     letterParagraphs: []
@@ -2361,19 +2362,29 @@ async function startSecretCall(type = 'audio') {
     };
 
     peer.on('open', (id) => {
-        const currentOrigin = window.location.origin;
+        let baseOrigin = window.location.origin;
+        // If testing on localhost/127.0.0.1 and user configured liveSiteUrl, use the live URL for Telegram link
+        if (CONFIG.liveSiteUrl && isLocalStaticEnvironment()) {
+            baseOrigin = CONFIG.liveSiteUrl.replace(/\/$/, '');
+        }
         const currentPath = window.location.pathname.replace(/\/index\.html$/, '') || '';
-        const callUrl = `${currentOrigin}${currentPath}/?call=${encodeURIComponent(id)}&type=${type}`;
+        const callUrl = `${baseOrigin}${currentPath}/?call=${encodeURIComponent(id)}&type=${type}`;
 
         const callName = isVideo ? 'Video Call' : 'Voice Call';
         const callIcon = isVideo ? '📹' : '📞';
         const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
+        let localDevNotice = '';
+        if (isLocalStaticEnvironment() && !CONFIG.liveSiteUrl) {
+            localDevNotice = `\n\n⚠️ <i>(Notice: Call laptop localhost/127.0.0.1 par chalu hua hai. Phone 127.0.0.1 nahi khol sakta. Live Vercel website link se call karein ya PC par dusre tab me link paste karke test karein.)</i>`;
+        }
+
         const telegramText = `🚨 <b>Incoming Secret ${callName}!</b> ${callIcon}💕\n\n` +
                              `👤 <b>From:</b> ${CONFIG.partnerName}\n` +
                              `🕒 <b>Time:</b> <code>${timeStr}</code>\n\n` +
                              `👉 <b><a href="${callUrl}">📲 TAP HERE TO ANSWER CALL</a></b>\n\n` +
-                             `<i>(Private end-to-end encrypted call. Zero logs on phone.)</i>`;
+                             `<i>(Private end-to-end encrypted call. Zero logs on phone.)</i>` +
+                             localDevNotice;
 
         callTelegramApi('sendMessage', {
             text: telegramText,
