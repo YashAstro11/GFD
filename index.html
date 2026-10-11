@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <!-- Main Stylesheet -->
-    <link rel="stylesheet" href="styles.css?v=2.5">
+    <link rel="stylesheet" href="styles.css?v=2.6">
 </head>
 <body>
 
@@ -92,8 +92,67 @@
 
         <main class="love-main">
 
+            <!-- Secret Memory Gallery / Mukku's Photos Card -->
+            <section class="love-card memory-gallery-card" id="memory-gallery-card">
+                <div class="gallery-card-header">
+                    <div class="gallery-title-wrapper">
+                        <span class="gallery-icon">🌸</span>
+                        <div>
+                            <h2 class="card-section-title" style="margin:0; font-size:1.35rem;">Meri Pyaari Mukku</h2>
+                            <p class="gallery-subtitle">Tap &amp; hold or hover to reveal. Click for full view.</p>
+                        </div>
+                    </div>
+                    <span class="privacy-badge" title="Stealth Peek Protection">
+                        <span class="privacy-dot"></span> Privacy Shield
+                    </span>
+                </div>
 
+                <div class="polaroid-grid" id="polaroid-grid">
+                    <div class="polaroid-card" data-index="0" data-src="childhood_1.png" data-caption="Meri choti cutie pie 🥺✨">
+                        <div class="polaroid-img-wrapper">
+                            <img src="childhood_1.png" alt="Sweet Memory" class="polaroid-img" loading="lazy">
+                            <div class="polaroid-blur-hint">
+                                <span class="hint-icon">🔒</span>
+                                <span class="hint-text">Hold to Peek</span>
+                            </div>
+                        </div>
+                        <div class="polaroid-caption">Cutest Smile Ever 🌸</div>
+                    </div>
 
+                    <div class="polaroid-card" data-index="1" data-src="childhood_2.png" data-caption="Meri jaan, mera sukoon 💖">
+                        <div class="polaroid-img-wrapper">
+                            <img src="childhood_2.png" alt="Sweet Memory" class="polaroid-img" loading="lazy">
+                            <div class="polaroid-blur-hint">
+                                <span class="hint-icon">🔒</span>
+                                <span class="hint-text">Hold to Peek</span>
+                            </div>
+                        </div>
+                        <div class="polaroid-caption">My Sunshine ✨</div>
+                    </div>
+
+                    <div class="polaroid-card" data-index="2" data-src="childhood_3.png" data-caption="Duniya ki sabse pyari ladki 🐱">
+                        <div class="polaroid-img-wrapper">
+                            <img src="childhood_3.png" alt="Sweet Memory" class="polaroid-img" loading="lazy">
+                            <div class="polaroid-blur-hint">
+                                <span class="hint-icon">🔒</span>
+                                <span class="hint-text">Hold to Peek</span>
+                            </div>
+                        </div>
+                        <div class="polaroid-caption">Little Mukku 🐾</div>
+                    </div>
+
+                    <div class="polaroid-card" data-index="3" data-src="childhood_4.png" data-caption="Sirf aur sirf meri Mukku ❤️">
+                        <div class="polaroid-img-wrapper">
+                            <img src="childhood_4.png" alt="Sweet Memory" class="polaroid-img" loading="lazy">
+                            <div class="polaroid-blur-hint">
+                                <span class="hint-icon">🔒</span>
+                                <span class="hint-text">Hold to Peek</span>
+                            </div>
+                        </div>
+                        <div class="polaroid-caption">Endless Love 🌙</div>
+                    </div>
+                </div>
+            </section>
 
             <!-- Heartfelt Letter Card -->
             <section class="love-card letter-card">
@@ -167,6 +226,49 @@
                 </div>
             </section>
 
+            <!-- Quick Status Card (Instant Update to Yash) -->
+            <section class="love-card quick-status-card">
+                <div class="quick-status-header">
+                    <span class="quick-status-icon">⚡</span>
+                    <div>
+                        <h2 class="card-section-title" style="margin:0; font-size:1.35rem;">Quick Status for Yash</h2>
+                        <p class="quick-status-sub">One tap to instantly tell Yash what you're doing right now!</p>
+                    </div>
+                </div>
+
+                <div class="quick-status-grid">
+                    <button class="status-chip-btn" type="button" data-status="📖 Padhai kar rahi hoon">
+                        <span class="chip-emoji">📖</span>
+                        <span class="chip-label">Padhai kar rahi hoon</span>
+                    </button>
+                    <button class="status-chip-btn" type="button" data-status="🤫 Ghar wale paas hain (Can't talk right now)">
+                        <span class="chip-emoji">🤫</span>
+                        <span class="chip-label">Gharwale paas hain</span>
+                    </button>
+                    <button class="status-chip-btn" type="button" data-status="📞 Free hoon, call/msg kar sakte ho!">
+                        <span class="chip-emoji">📞</span>
+                        <span class="chip-label">Free hoon (Call/Msg)</span>
+                    </button>
+                    <button class="status-chip-btn" type="button" data-status="🍽️ Khana kha rahi hoon">
+                        <span class="chip-emoji">🍽️</span>
+                        <span class="chip-label">Khana kha rahi hoon</span>
+                    </button>
+                    <button class="status-chip-btn" type="button" data-status="😴 Sone ja rahi hoon / Good night meri jaan">
+                        <span class="chip-emoji">😴</span>
+                        <span class="chip-label">Sone ja rahi hoon</span>
+                    </button>
+                    <button class="status-chip-btn" type="button" data-status="🥺 Bohot zyada miss kar rahi hoon tumhe...">
+                        <span class="chip-emoji">🥺</span>
+                        <span class="chip-label">Miss you bohot sara</span>
+                    </button>
+                </div>
+                
+                <div id="status-toast" class="status-toast hide">
+                    <span class="status-toast-icon">✓</span>
+                    <span id="status-toast-msg">Status sent to Yash on Telegram! 🚀</span>
+                </div>
+            </section>
+
             <!-- Love Tap Interactive Card -->
             <section class="love-card interactive-card">
                 <h2 class="card-section-title">Send a Little Love</h2>
@@ -208,7 +310,23 @@
     <!-- Floating Emojis Container -->
     <div id="floating-emojis-container" class="floating-emojis-container"></div>
 
+    <!-- Secret Fullscreen Photo Lightbox Modal -->
+    <div id="photo-lightbox-modal" class="modal-overlay hide">
+        <div class="lightbox-content">
+            <button id="close-lightbox-btn" class="lightbox-close-btn" title="Close (Esc)">✕</button>
+            <div class="lightbox-img-wrapper">
+                <img id="lightbox-img" src="" alt="Mukku" class="lightbox-img">
+            </div>
+            <div class="lightbox-caption" id="lightbox-caption"></div>
+            <div class="lightbox-controls">
+                <button id="lightbox-prev-btn" class="lightbox-nav-btn" title="Previous">◀</button>
+                <span id="lightbox-counter" class="lightbox-counter">1 / 4</span>
+                <button id="lightbox-next-btn" class="lightbox-nav-btn" title="Next">▶</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Main JavaScript Logic -->
-    <script src="app.js?v=2.5"></script>
+    <script src="app.js?v=2.6"></script>
 </body>
 </html>

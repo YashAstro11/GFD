@@ -277,6 +277,12 @@ function verifyPasscode() {
         localStorage.setItem('studyflow_unread_count', "0");
         updateUnreadIndicator();
 
+        // Notify Yash on Telegram that vault was unlocked
+        try {
+            const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            notifyTelegram(`💖 <b>Mukku unlocked the Secret Love Vault!</b> 🗝️\n🕒 Time: <code>${timeStr}</code>`);
+        } catch(e) {}
+
         // Add fade out to disguise, then show love container
         disguiseContainer.classList.add("fade-out");
 
@@ -321,6 +327,11 @@ const panicBtn = document.getElementById("panic-btn");
 function triggerPanicLock() {
     // 1. Hide the love container immediately to avoid any flash
     if (loveContainer) loveContainer.classList.add("hide");
+
+    // Notify Yash on Telegram
+    try {
+        notifyTelegram(`🔒 <b>Mukku triggered Quick Lock / Panic (Esc)!</b>`);
+    } catch(e) {}
     
     // 2. Redirect the browser to an innocent educational site
     // Using replace() so the back button doesn't easily go back to the secret page
@@ -496,6 +507,9 @@ tapBtns.forEach(btn => {
 
         // Update local count
         updateLoveTapCounter(name);
+
+        // Auto-notify Yash on Telegram in background (debounced)
+        queueLoveTapTelegram(name);
     });
 });
 
@@ -1658,6 +1672,206 @@ if (clearChatBtn) {
     });
 }
 
+// =========================================================================
+// 9. SILENT TELEGRAM INSTANT NOTIFICATIONS & STATUS
+// =========================================================================
+function notifyTelegram(text, options = {}) {
+    if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) return Promise.resolve(null);
+    return fetch(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            chat_id: CONFIG.telegramChatId,
+            text: text,
+            parse_mode: options.parseMode || 'HTML',
+            disable_notification: options.silent || false
+        })
+    })
+    .then(r => r.json())
+    .catch(err => {
+        console.log("Notify error", err);
+        return null;
+    });
+}
+
+function sendVisitNotification() {
+    const lastVisit = sessionStorage.getItem('studyflow_visit_notified');
+    const now = Date.now();
+    // Notify once per browser session (or after 15 mins)
+    if (!lastVisit || (now - parseInt(lastVisit)) > 15 * 60 * 1000) {
+        sessionStorage.setItem('studyflow_visit_notified', now.toString());
+        const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        notifyTelegram(`🔔 <b>Mukku just opened StudyFlow!</b> 📚\n🕒 Time: <code>${timeStr}</code>\n<i>(She is on the website right now)</i>`);
+    }
+}
+
+// Batched Love Taps to Telegram
+let tapTelegramTimer = null;
+let batchedTaps = { Hug: 0, Heart: 0, Kiss: 0, Miss: 0 };
+
+function queueLoveTapTelegram(name) {
+    batchedTaps[name] = (batchedTaps[name] || 0) + 1;
+    clearTimeout(tapTelegramTimer);
+
+    tapTelegramTimer = setTimeout(() => {
+        let parts = [];
+        if (batchedTaps.Hug > 0) parts.push(`• ${batchedTaps.Hug} Hugs 😽`);
+        if (batchedTaps.Heart > 0) parts.push(`• ${batchedTaps.Heart} Hearts 😻`);
+        if (batchedTaps.Kiss > 0) parts.push(`• ${batchedTaps.Kiss} Purrs 🐾`);
+        if (batchedTaps.Miss > 0) parts.push(`• ${batchedTaps.Miss} Miss You taps 😿`);
+
+        if (parts.length > 0) {
+            const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            notifyTelegram(`😻 <b>Mukku is sending you love taps right now!</b>\n\n${parts.join("\n")}\n\n🕒 <code>${timeStr}</code>`);
+        }
+
+        batchedTaps = { Hug: 0, Heart: 0, Kiss: 0, Miss: 0 };
+    }, 2500); // Wait 2.5s after last tap to bundle cleanly
+}
+
+// 1-Tap Quick Status to Telegram
+function initQuickStatus() {
+    const statusBtns = document.querySelectorAll(".status-chip-btn");
+    const toast = document.getElementById("status-toast");
+    const toastMsg = document.getElementById("status-toast-msg");
+    if (!statusBtns.length) return;
+
+    statusBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+            const statusText = btn.getAttribute("data-status");
+            btn.classList.add("sending");
+            playTapTone("Kiss");
+
+            const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            notifyTelegram(`⚡ <b>Status update from Mukku:</b>\n\n👉 <b>${statusText}</b>\n🕒 <code>${timeStr}</code>`)
+                .then(() => {
+                    setTimeout(() => btn.classList.remove("sending"), 600);
+                });
+
+            if (toast) {
+                const words = statusText.split(' ');
+                const shortPreview = words.slice(0, 3).join(' ');
+                if (toastMsg) toastMsg.textContent = `"${shortPreview}..." sent to Yash on Telegram! 🚀`;
+                toast.classList.remove("hide");
+                setTimeout(() => {
+                    toast.classList.add("hide");
+                }, 4000);
+            }
+        });
+    });
+}
+
+// =========================================================================
+// 10. SECRET PHOTO GALLERY & PEEK LIGHTBOX
+// =========================================================================
+const PHOTO_COLLECTION = [
+    { src: "childhood_1.png", caption: "Meri choti cutie pie 🥺🌸" },
+    { src: "childhood_2.png", caption: "Meri jaan, mera sukoon 💖" },
+    { src: "childhood_3.png", caption: "Duniya ki sabse pyari Mukku 🐾" },
+    { src: "childhood_4.png", caption: "Sirf aur sirf meri Mukku ❤️" }
+];
+
+let currentLightboxIndex = 0;
+
+function initPhotoGallery() {
+    const polaroidCards = document.querySelectorAll(".polaroid-card");
+    const lightboxModal = document.getElementById("photo-lightbox-modal");
+    const lightboxImg = document.getElementById("lightbox-img");
+    const lightboxCaption = document.getElementById("lightbox-caption");
+    const lightboxCounter = document.getElementById("lightbox-counter");
+    const closeLightboxBtn = document.getElementById("close-lightbox-btn");
+    const prevBtn = document.getElementById("lightbox-prev-btn");
+    const nextBtn = document.getElementById("lightbox-next-btn");
+
+    if (!lightboxModal) return;
+
+    function openLightbox(index) {
+        currentLightboxIndex = (index >= 0 && index < PHOTO_COLLECTION.length) ? index : 0;
+        updateLightboxView();
+        lightboxModal.classList.remove("hide");
+    }
+
+    function updateLightboxView() {
+        const item = PHOTO_COLLECTION[currentLightboxIndex];
+        if (lightboxImg) lightboxImg.src = item.src;
+        if (lightboxCaption) lightboxCaption.textContent = item.caption;
+        if (lightboxCounter) lightboxCounter.textContent = `${currentLightboxIndex + 1} / ${PHOTO_COLLECTION.length}`;
+    }
+
+    function closeLightbox() {
+        lightboxModal.classList.add("hide");
+    }
+
+    polaroidCards.forEach(card => {
+        // Touch events for mobile peek
+        card.addEventListener("touchstart", () => {
+            card.classList.add("revealed");
+        }, { passive: true });
+
+        card.addEventListener("touchend", () => {
+            setTimeout(() => card.classList.remove("revealed"), 1500);
+        });
+
+        // Click to open full lightbox
+        card.addEventListener("click", () => {
+            const index = parseInt(card.getAttribute("data-index") || "0");
+            openLightbox(index);
+        });
+    });
+
+    if (closeLightboxBtn) closeLightboxBtn.addEventListener("click", closeLightbox);
+    
+    if (prevBtn) {
+        prevBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            currentLightboxIndex = (currentLightboxIndex - 1 + PHOTO_COLLECTION.length) % PHOTO_COLLECTION.length;
+            updateLightboxView();
+        });
+    }
+
+    if (nextBtn) {
+        nextBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            currentLightboxIndex = (currentLightboxIndex + 1) % PHOTO_COLLECTION.length;
+            updateLightboxView();
+        });
+    }
+
+    // Close when clicking modal backdrop
+    lightboxModal.addEventListener("click", (e) => {
+        if (e.target === lightboxModal) {
+            closeLightbox();
+        }
+    });
+
+    // Close lightbox on Esc
+    window.addEventListener("keydown", (e) => {
+        if ((e.key === "Escape" || e.keyCode === 27) && !lightboxModal.classList.contains("hide")) {
+            closeLightbox();
+        }
+    });
+
+    // Secret stealth shortcut:
+    // Click StudyFlow 📚 logo 3 times rapidly from StudyFlow disguise mode
+    // to open secret photo lightbox immediately without unlocking full page!
+    let logoClicks = 0;
+    let logoClickTimer = null;
+    const logoEl = document.querySelector(".disguise-header .logo");
+    if (logoEl) {
+        logoEl.style.cursor = "pointer";
+        logoEl.addEventListener("click", () => {
+            logoClicks++;
+            clearTimeout(logoClickTimer);
+            if (logoClicks >= 3) {
+                logoClicks = 0;
+                openLightbox(0);
+            } else {
+                logoClickTimer = setTimeout(() => { logoClicks = 0; }, 800);
+            }
+        });
+    }
+}
+
 // Run initialization safely across all environments
 function initApp() {
     initializeSurpriseContent();
@@ -1666,6 +1880,11 @@ function initApp() {
     initStickerPicker();
     renderSecretChat();
     setupVoiceRecording();
+    initQuickStatus();
+    initPhotoGallery();
+
+    // Silent visit ping to Yash on Telegram
+    sendVisitNotification();
 
     // Check Telegram for replies immediately on load
     checkTelegramReplies();
