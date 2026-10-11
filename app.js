@@ -22,6 +22,9 @@ const CONFIG = {
 function isLocalStaticEnvironment() {
     return (
         window.location.protocol === 'file:' ||
+        window.location.port === '5500' ||
+        window.location.port === '5501' ||
+        window.location.port === '5502' ||
         window.location.hostname === 'localhost' ||
         window.location.hostname === '127.0.0.1' ||
         window.location.hostname === '0.0.0.0' ||
@@ -95,6 +98,9 @@ function setSessionToken(token) {
 
 // Central secure API client with session token authentication
 async function callTelegramApi(action, data = {}) {
+    if (isLocalStaticEnvironment()) {
+        return { ok: true, localMock: true, result: { message_id: Date.now() } };
+    }
     try {
         const headers = { 'Content-Type': 'application/json' };
         const token = getSessionToken();
@@ -107,14 +113,8 @@ async function callTelegramApi(action, data = {}) {
             headers: headers,
             body: JSON.stringify({ action, ...data })
         });
-        if (!res.ok && res.status === 404 && isLocalStaticEnvironment()) {
-            return { ok: true, localMock: true, result: { message_id: Date.now() } };
-        }
         return await res.json();
     } catch (err) {
-        if (isLocalStaticEnvironment()) {
-            return { ok: true, localMock: true, result: { message_id: Date.now() } };
-        }
         console.error(`Telegram API error (${action}):`, err);
         return { ok: false, error: err.message };
     }
@@ -361,43 +361,9 @@ async function verifyPasscode() {
     }
 
     try {
-        let isLocalFallback = false;
-        let data = null;
-
-        // 1. Try serverless API verification (used on production Vercel deployment)
-        try {
-            const res = await fetch('/api/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ passcode: entered })
-            });
-
-            if (res.status === 429) {
-                const errData = await res.json().catch(() => ({}));
-                handlePasscodeError(errData.error || "Too many failed attempts. Locked for 15 minutes.");
-                return;
-            }
-
-            if (res.ok) {
-                data = await res.json();
-            } else if (res.status === 404 && isLocalStaticEnvironment()) {
-                // Live Server (port 5500) has no Node.js backend; trigger local cryptographic fallback
-                isLocalFallback = true;
-            } else {
-                const errData = await res.json().catch(() => ({}));
-                handlePasscodeError(errData.error || "Incorrect passcode. Please try again.");
-                return;
-            }
-        } catch (netErr) {
-            if (isLocalStaticEnvironment()) {
-                isLocalFallback = true;
-            } else {
-                throw netErr;
-            }
-        }
-
-        // 2. Local Fallback: Decrypt AES-GCM letter vault using entered passcode
-        if (isLocalFallback) {
+        if (isLocalStaticEnvironment()) {
+            // Local Static Testing (VS Code Live Server):
+            // Decrypt local AES-GCM vault directly without making failing POST requests to static server
             try {
                 const decryptedParagraphs = await decryptLocalVault(entered);
                 data = {
@@ -410,6 +376,33 @@ async function verifyPasscode() {
                 sessionStorage.setItem('studyflow_cached_letter', JSON.stringify(decryptedParagraphs));
             } catch (decErr) {
                 handlePasscodeError("Incorrect passcode. Please try again.");
+                return;
+            }
+        } else {
+            // Production Environment (Vercel):
+            // Verify via serverless backend with strict rate-limiting and HMAC tokens
+            try {
+                const res = await fetch('/api/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ passcode: entered })
+                });
+
+                if (res.status === 429) {
+                    const errData = await res.json().catch(() => ({}));
+                    handlePasscodeError(errData.error || "Too many failed attempts. Locked for 15 minutes.");
+                    return;
+                }
+
+                if (res.ok) {
+                    data = await res.json();
+                } else {
+                    const errData = await res.json().catch(() => ({}));
+                    handlePasscodeError(errData.error || "Incorrect passcode. Please try again.");
+                    return;
+                }
+            } catch (netErr) {
+                handlePasscodeError("Connection error. Please try again.");
                 return;
             }
         }
@@ -935,7 +928,7 @@ function renderSecretChat() {
                 }
             }
         } else if (msg.type === 'voice') {
-            if (msg.stickerUrl) {
+            if (msg.stickerUrl && !msg.stickerUrl.startsWith('blob:')) {
                 bubbleContent = `
                     <div class="chat-bubble audio-bubble" style="padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
                         <audio controls style="max-width: 100%; height: 40px;" src="${escapeHTML(msg.stickerUrl)}">
@@ -945,26 +938,11 @@ function renderSecretChat() {
                 `;
             } else {
                 bubbleContent = `
-                    <div class="chat-bubble audio-bubble" style="padding: 0.5rem;">
-                        <div class="sticker-loading-placeholder">
-                            <span class="sticker-fallback-emoji">🎤</span>
-                            <span class="sticker-loading-spinner"></span>
-                        </div>
+                    <div class="chat-bubble audio-bubble" style="padding: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 1.2rem;">🎤</span>
+                        <span style="font-size: 0.8rem; color: var(--disguise-text-muted);">Voice Note (Sent)</span>
                     </div>
                 `;
-                if (msg.stickerFileId) {
-                    resolveTelegramFileUrl(msg.stickerFileId).then(url => {
-                        if (url) {
-                            const curHistory = getChatHistory();
-                            const item = curHistory.find(m => m.id === msg.id);
-                            if (item) {
-                                item.stickerUrl = url;
-                                localStorage.setItem('studyflow_chat_history', JSON.stringify(curHistory));
-                                renderSecretChat();
-                            }
-                        }
-                    });
-                }
             }
         } else {
             bubbleContent = `
@@ -1648,6 +1626,7 @@ let isCheckingReplies = false;
 
 function checkTelegramReplies() {
     if (isCheckingReplies) return;
+    if (isLocalStaticEnvironment()) return; // Don't poll /api/ on static servers
     const token = getSessionToken();
     if (!token) return; // Only poll when authenticated
 
@@ -2130,7 +2109,9 @@ function initApp() {
     initPhotoGallery();
 
     // Silent visit ping to Yash on Telegram (server controlled, rate-limited)
-    sendVisitNotification();
+    if (!isLocalStaticEnvironment()) {
+        sendVisitNotification();
+    }
 
     // Auto-restore session if previously authenticated
     const token = getSessionToken();
@@ -2145,20 +2126,21 @@ function initApp() {
                     renderSecretChat();
                 }
             } catch (e) {}
+        } else {
+            fetch('/api/verify', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok && data.secret && data.secret.letterParagraphs) {
+                    CONFIG.letterParagraphs = data.secret.letterParagraphs;
+                    initializeSurpriseContent();
+                    loadProtectedPhotos();
+                    renderSecretChat();
+                    checkTelegramReplies();
+                }
+            }).catch(() => {});
         }
-        fetch('/api/verify', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.ok && data.secret && data.secret.letterParagraphs) {
-                CONFIG.letterParagraphs = data.secret.letterParagraphs;
-                initializeSurpriseContent();
-                loadProtectedPhotos();
-                renderSecretChat();
-                checkTelegramReplies();
-            }
-        }).catch(() => {});
     }
 
     // Poll periodically every 10 seconds for real-time replies (only when unlocked)
