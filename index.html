@@ -17,16 +17,14 @@
     <!-- DISGUISE / SAFE MODE CONTAINER -->
     <div id="disguise-container" class="disguise-container">
         <header class="disguise-header">
-            <div class="logo">
+            <div class="logo" id="stealth-logo-trigger" title="StudyFlow" style="cursor: pointer; user-select: none;">
                 <span class="logo-icon">📚</span>
                 <span class="logo-text">StudyFlow</span>
             </div>
-            <!-- Lock Button disguised as Private Notes lock -->
-            <button id="private-lock-btn" class="private-lock-btn" aria-label="Unlock Private Notes" title="Private Notes">
-                <svg viewBox="0 0 24 24" class="lock-svg">
-                    <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
-                </svg>
-                <span id="unread-dot" class="unread-dot hide" title="New message available"></span>
+            <!-- Stealth Disguised Button (Bookmark/Journal instead of padlock) -->
+            <button id="private-lock-btn" class="private-lock-btn stealth-mode" aria-label="Reading Notes" title="Saved Notes">
+                <span class="stealth-icon">🔖</span>
+                <span id="unread-dot" class="unread-dot hide" title="New note available"></span>
             </button>
         </header>
 
@@ -63,16 +61,19 @@
             <p>StudyFlow Workspace &copy; 2026. Plan. Focus. Achieve.</p>
         </footer>
 
-        <!-- Passcode Modal Disguised as Notes Unlock -->
+        <!-- Passcode Modal Disguised as Workspace Key -->
         <div id="passcode-modal" class="modal-overlay hide">
             <div class="modal-card">
-                <h3 class="modal-title">Enter Private Vault Passcode</h3>
-                <p class="modal-hint">Enter your personal access code to view stored journal logs.</p>
+                <h3 class="modal-title" id="vault-modal-title">StudyFlow Access Key</h3>
+                <p class="modal-hint" id="vault-modal-hint">Enter your authorized passphrase to access private notes.</p>
                 <div class="passcode-input-wrapper">
-                    <input type="password" id="passcode-input" maxlength="10" placeholder="••••" autocomplete="off">
-                    <button id="verify-passcode-btn" class="d-btn btn-primary">Verify</button>
+                    <div class="password-field-container">
+                        <input type="password" id="passcode-input" maxlength="64" placeholder="Enter passphrase..." autocomplete="off">
+                        <button type="button" id="toggle-password-visibility" class="toggle-pwd-btn" title="Show/Hide Passphrase">👁️</button>
+                    </div>
+                    <button id="verify-passcode-btn" class="d-btn btn-primary">Unlock</button>
                 </div>
-                <p id="passcode-error" class="error-text hide">Incorrect passcode. Please try again.</p>
+                <p id="passcode-error" class="error-text hide">Invalid access key. Please try again.</p>
                 <button id="close-passcode-btn" class="close-text-btn">Cancel</button>
             </div>
         </div>

@@ -6,7 +6,7 @@ function getSecret() {
 }
 
 function getPasscode() {
-    return (process.env.PASSCODE || "2603").trim();
+    return (process.env.PASSCODE || "").trim();
 }
 
 // Generate cryptographic session token (valid for 30 days)

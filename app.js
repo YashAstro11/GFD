@@ -79,10 +79,10 @@ window.openSecretLightbox = function(src, caption) {
 
 // Encrypted Secret Letter Bundle (Zero plaintext secrets in client source code; protected with AES-GCM)
 const ENCRYPTED_LETTER_VAULT = {
-    salt: "HAfCAHDitZQ99tm1jOCxYw==",
-    iv: "HfNpSUVAnqMWp3bO",
-    tag: "PXm1nQD9YVSA1NBWgH1taw==",
-    ciphertext: "flxrjrNh5ueppZClbcuEj2JEhpWEZCeJs3aMMMJYdi2EDU/r5nNswBBEcquYpEI771b0cDkPImxmDV5pLx8Hn+q669qtllooe4+NVurNot4XrvmsPXBnkXneX1tywWDNBVrRD01TIosCWQ+XEV370geRBY1o9L4eDiqD/+AeN1+XNwsgvymd4n4BefFOpWIqTLJ1nk0VMQTHbEsWqMl5yQCTJlHGmT55aYfeq06wm1F2zdV7DAnw+OcO0irkWTmoxmkUv3PpP8bsq2We1RIh0zFZxIS4rlSXHmqHAf13WZ4YtisjLJcJWyY4WJRsNN/6oChOhaviLDK9lTjG11FAP19EJj5xTFXv+2ymPKBgiMpFp7r7Xg1TJyYPQiOJIaKZbIuumUn0vErtcyt2rTbGvCfM+/SbJdKJBGDlsXxA0zeJwjBB2C8vLA+/tx9mdDly07dLP1uJHHsY3ZITu/pjq7XksLnW0B1D7YLMF9mogwgFW9SA0yFVYmEven0BUKdjj6ybULzbWBJLLYa1Ki9hQHOe00x2GA+epr+7F6NMEMDNFgbkeZgir6uLg5Qpfz2Tk3JukDAbCbdqAzFeGGxRI5x6mtvD+L0l8zLAsBQt10NWzwNEx0p5coFouN/MMYHIxXp0Rww79SAU74vy0mx4WK9SHTFYRd9NArc407QcnTlD5lRkukfHkfC3ba6P"
+    salt: "w8hevZoPrtDmLo5Sx6TzrA==",
+    iv: "shu9cd+0I8XF3rzA",
+    tag: "Ou3pnaeXZKwLlOIP55GcLg==",
+    ciphertext: "Fj56cVtwwFw0YEy7STCn1+CbIibkEQL97BXeDi+OlAvXH5XNRPVlmlYNzQgR4EUExdHSv577aE5G4/6vn21a41ltlEwiLKc06e5RFs4GUkhD2rRyezDGq3RfPRJqB2FlUceUcDkqMdDCV2zJeu8AP7ySX54q8B4xZvy1IR4z17VJLunNLENC/ApzIz82MO9QDRoHFxi1M8/kIwrkKdzN4jhvuoQLOD1JULNy1tVWviinwMFUF92zIrJlaQ2pn5D4fXNihOKnzs2G7ii2KIEi0NHANNzRFpAB7grtTg5aN7siRjiglXha9C6KIa+SnoaW7ZSvbnECoEXG7SlYbFK7QoCAGZyTGsI5A7Uf+cTthqhVJhnTdhGMBtLGf8mU/vTHB/wvBMsZN9KcRCcBzZlb4COKiaDexnU7/YbPE7gBc3mbQKMvB6HOB5lh3uV9aV1BDeQGGkGhs6HEfZejOKGJsHc62DYLrAW5vkLCrqF8JRGvWmqWf6uzqqhq1lWt+B2wQ81T5E/OgaKvMk9YIhR+540CtoKZWU6UAiCpQoA3LWIANklGLwa28Ra/CcGDNwMi+IKWbB3Zb/gfbmBAxwut7gcvybpDpopw//2aZMufMM2pd5vPJo2LtytgDi6OP+0K+gL1L2OJE9igdPgzwA9c9osEGt7JCluZ6S5rx4E+U2wSFfNGD3djvwYanKy0"
 };
 
 async function decryptLocalVault(passcode) {
@@ -368,6 +368,9 @@ const loveContainer = document.getElementById("love-container");
 
 function openUnlockModal() {
     passcodeModal.classList.remove("hide");
+    passcodeInput.type = "password";
+    const toggleBtn = document.getElementById("toggle-password-visibility");
+    if (toggleBtn) toggleBtn.textContent = "👁️";
     passcodeInput.focus();
     passcodeError.classList.add("hide");
     passcodeInput.value = "";
@@ -376,6 +379,9 @@ function openUnlockModal() {
 function closeUnlockModal() {
     passcodeModal.classList.add("hide");
     passcodeInput.value = "";
+    passcodeInput.type = "password";
+    const toggleBtn = document.getElementById("toggle-password-visibility");
+    if (toggleBtn) toggleBtn.textContent = "👁️";
     passcodeError.classList.add("hide");
 }
 
@@ -530,6 +536,40 @@ function handlePasscodeError(msg) {
 if (privateLockBtn) privateLockBtn.addEventListener("click", openUnlockModal);
 if (closePasscodeBtn) closePasscodeBtn.addEventListener("click", closeUnlockModal);
 if (verifyPasscodeBtn) verifyPasscodeBtn.addEventListener("click", verifyPasscode);
+
+// Password visibility toggle
+const togglePwdBtn = document.getElementById("toggle-password-visibility");
+if (togglePwdBtn && passcodeInput) {
+    togglePwdBtn.addEventListener("click", () => {
+        const isPassword = passcodeInput.type === "password";
+        passcodeInput.type = isPassword ? "text" : "password";
+        togglePwdBtn.textContent = isPassword ? "🙈" : "👁️";
+    });
+}
+
+// Secret Knock: Triple-clicking StudyFlow logo opens the vault without clicking any button!
+const stealthLogoTrigger = document.getElementById("stealth-logo-trigger");
+let logoKnockCount = 0;
+let logoKnockTimer = null;
+if (stealthLogoTrigger) {
+    stealthLogoTrigger.addEventListener("click", () => {
+        logoKnockCount++;
+        clearTimeout(logoKnockTimer);
+        logoKnockTimer = setTimeout(() => { logoKnockCount = 0; }, 1200);
+        if (logoKnockCount >= 3) {
+            logoKnockCount = 0;
+            openUnlockModal();
+        }
+    });
+}
+
+// Secret Keyboard Shortcut: Alt + S or Ctrl + Shift + L
+window.addEventListener("keydown", (e) => {
+    if ((e.altKey && (e.key === 's' || e.key === 'S')) || (e.ctrlKey && e.shiftKey && (e.key === 'L' || e.key === 'l'))) {
+        e.preventDefault();
+        openUnlockModal();
+    }
+});
 
 if (passcodeInput) {
     passcodeInput.addEventListener("keydown", (e) => {
