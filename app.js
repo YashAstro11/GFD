@@ -277,12 +277,6 @@ function verifyPasscode() {
         localStorage.setItem('studyflow_unread_count', "0");
         updateUnreadIndicator();
 
-        // Notify Yash on Telegram that vault was unlocked
-        try {
-            const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-            notifyTelegram(`💖 <b>Mukku unlocked the Secret Love Vault!</b> 🗝️\n🕒 Time: <code>${timeStr}</code>`);
-        } catch(e) {}
-
         // Add fade out to disguise, then show love container
         disguiseContainer.classList.add("fade-out");
 
@@ -328,11 +322,6 @@ function triggerPanicLock() {
     // 1. Hide the love container immediately to avoid any flash
     if (loveContainer) loveContainer.classList.add("hide");
 
-    // Notify Yash on Telegram
-    try {
-        notifyTelegram(`🔒 <b>Mukku triggered Quick Lock / Panic (Esc)!</b>`);
-    } catch(e) {}
-    
     // 2. Redirect the browser to an innocent educational site
     // Using replace() so the back button doesn't easily go back to the secret page
     window.location.replace("https://www.wikipedia.org/");
