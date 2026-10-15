@@ -48,7 +48,8 @@ const API_ROUTES = {
     '/api/verify': require('./api/verify'),
     '/api/telegram': require('./api/telegram'),
     '/api/file': require('./api/file'),
-    '/api/photo': require('./api/photo')
+    '/api/photo': require('./api/photo'),
+    '/api/schedule': require('./api/schedule')
 };
 
 function enhanceServerlessReqRes(req, res, parsedUrl, bodyData) {
@@ -141,5 +142,19 @@ server.listen(PORT, () => {
     console.log(`  StudyFlow / Love Space Dev Server Active!`);
     console.log(`  URL: http://localhost:${PORT}`);
     console.log(`  Telegram sync & photo proxy running locally.`);
+    console.log(`  Autonomous scheduled messages worker active (20s).`);
     console.log(`======================================================\n`);
+
+    // Autonomous background schedule dispatcher (runs every 20 seconds)
+    const scheduleHandler = require('./api/schedule');
+    setInterval(async () => {
+        try {
+            if (typeof scheduleHandler.dispatchDueMessages === 'function') {
+                await scheduleHandler.dispatchDueMessages();
+            }
+        } catch (err) {
+            console.warn("Background schedule dispatch warning:", err.message);
+        }
+    }, 20000);
 });
+

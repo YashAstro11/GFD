@@ -434,36 +434,68 @@ async function verifyPasscode() {
             }
         } else {
             // Production Environment (Vercel):
-            // Verify via serverless backend with strict rate-limiting and HMAC tokens
-            try {
-                const res = await fetch('/api/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ passcode: entered })
-                });
-
-                if (res.status === 429) {
-                    const errData = await res.json().catch(() => ({}));
-                    handlePasscodeError(errData.error || "Too many failed attempts. Locked for 15 minutes.");
+            // 1. If device is offline, unlock immediately via client-side AES-GCM vault decryption
+            if (!navigator.onLine) {
+                try {
+                    const decryptedParagraphs = await decryptLocalVault(entered);
+                    data = {
+                        ok: true,
+                        sessionToken: getSessionToken() || ('offline_session_' + Date.now()),
+                        isOffline: true,
+                        secret: { letterParagraphs: decryptedParagraphs }
+                    };
+                    sessionStorage.setItem('studyflow_cached_letter', JSON.stringify(decryptedParagraphs));
+                } catch (decErr) {
+                    handlePasscodeError("Incorrect passcode. Please try again.");
                     return;
                 }
+            } else {
+                // 2. If online, verify via serverless backend with HMAC tokens
+                try {
+                    const res = await fetch('/api/verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ passcode: entered })
+                    });
 
-                if (res.ok) {
-                    data = await res.json();
-                } else {
-                    const errData = await res.json().catch(() => ({}));
-                    handlePasscodeError(errData.error || "Incorrect passcode. Please try again.");
-                    return;
+                    if (res.status === 429) {
+                        const errData = await res.json().catch(() => ({}));
+                        handlePasscodeError(errData.error || "Too many failed attempts. Locked for 15 minutes.");
+                        return;
+                    }
+
+                    if (res.ok) {
+                        data = await res.json();
+                    } else {
+                        const errData = await res.json().catch(() => ({}));
+                        handlePasscodeError(errData.error || "Incorrect passcode. Please try again.");
+                        return;
+                    }
+                } catch (netErr) {
+                    // Fallback to local AES-GCM vault if network connection failed unexpectedly
+                    try {
+                        const decryptedParagraphs = await decryptLocalVault(entered);
+                        data = {
+                            ok: true,
+                            sessionToken: getSessionToken() || ('offline_session_' + Date.now()),
+                            isOffline: true,
+                            secret: { letterParagraphs: decryptedParagraphs }
+                        };
+                        sessionStorage.setItem('studyflow_cached_letter', JSON.stringify(decryptedParagraphs));
+                    } catch (decErr) {
+                        handlePasscodeError("Incorrect passcode or offline unlock failed.");
+                        return;
+                    }
                 }
-            } catch (netErr) {
-                handlePasscodeError("Connection error. Please try again.");
-                return;
             }
         }
 
         if (data && data.ok && data.secret) {
             if (data.sessionToken) {
                 setSessionToken(data.sessionToken);
+            }
+            if (data.isOffline && typeof showLoveToast === 'function') {
+                showLoveToast("🌸 Vault Unlocked Offline! Past chats & secret letters are ready.", "📶");
             }
 
             // Populate secret love letter paragraphs safely
@@ -493,6 +525,8 @@ async function verifyPasscode() {
                 loveContainer.classList.add("fade-in");
                 if (typeof window.markMessagesAsSeen === 'function') window.markMessagesAsSeen();
                 renderSecretChat();
+                if (typeof checkAndDispatchScheduledMessages === 'function') checkAndDispatchScheduledMessages();
+                if (typeof renderScheduledMessages === 'function') renderScheduledMessages();
                 checkTelegramReplies(); // Fresh check
 
                 if (window.pendingIncomingCall) {
@@ -902,11 +936,14 @@ function getChatHistory() {
 
 function saveChatMessage(msg) {
     const history = getChatHistory();
-    if (!history.some(m => m.id === msg.id)) {
+    const idx = history.findIndex(m => m.id === msg.id);
+    if (idx !== -1) {
+        history[idx] = { ...history[idx], ...msg };
+    } else {
         history.push(msg);
-        const key = getVaultKey();
-        localStorage.setItem('studyflow_chat_history', encryptVaultData(JSON.stringify(history), key));
     }
+    const key = getVaultKey();
+    localStorage.setItem('studyflow_chat_history', encryptVaultData(JSON.stringify(history), key));
     renderSecretChat();
 }
 
@@ -1033,9 +1070,15 @@ function renderSecretChat() {
             `;
         }
 
-        let seenHtml = '';
-        if (!msg.isPartner && msg.seen) {
-            seenHtml = `<span style="font-size: 0.7rem; color: #3b82f6; font-weight: 600; display:flex; align-items:center; gap:0.1rem; margin-left: 0.2rem;">✓✓ Seen</span>`;
+        let statusHtml = '';
+        if (!msg.isPartner) {
+            if (msg.status === 'pending') {
+                statusHtml = `<span style="font-size: 0.7rem; color: #f59e0b; font-weight: 600; display:flex; align-items:center; gap:0.2rem; margin-left: 0.2rem;" title="Offline: Will auto-send when internet reconnects">⏳ Pending</span>`;
+            } else if (msg.seen) {
+                statusHtml = `<span style="font-size: 0.7rem; color: #3b82f6; font-weight: 600; display:flex; align-items:center; gap:0.1rem; margin-left: 0.2rem;" title="Seen by Yash">✓✓ Seen</span>`;
+            } else if (msg.telegramMessageId || msg.status === 'sent') {
+                statusHtml = `<span style="font-size: 0.7rem; color: #10b981; font-weight: 600; display:flex; align-items:center; gap:0.1rem; margin-left: 0.2rem;" title="Sent to Yash's Telegram">✓ Sent</span>`;
+            }
         }
 
         row.innerHTML = `
@@ -1047,7 +1090,7 @@ function renderSecretChat() {
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-9v5c5 0 11 2 11 9-2-5-9-5-9-5v5z"/></svg> Reply
                 </button>
                 ${editBtnHtml}
-                ${seenHtml}
+                ${statusHtml}
             </div>
         `;
         container.appendChild(row);
@@ -1083,6 +1126,7 @@ function updateUnreadIndicator() {
 function sendSecretUpdate(message) {
     if (!message || !message.trim()) return;
     const cleanMsg = message.trim();
+    const isOffline = !navigator.onLine;
 
     // Record Mukku's message into local chat history
     const newMsg = {
@@ -1091,6 +1135,7 @@ function sendSecretUpdate(message) {
         text: cleanMsg,
         timestamp: Date.now(),
         isPartner: false,
+        status: isOffline ? 'pending' : 'sending',
         replyTo: typeof activeReplyState !== 'undefined' && activeReplyState ? { text: activeReplyState.text } : null
     };
     saveChatMessage(newMsg);
@@ -1104,20 +1149,32 @@ function sendSecretUpdate(message) {
     }
     if (typeof cancelReply !== 'undefined') cancelReply();
 
+    if (isOffline) {
+        queueForOutbox({ id: newMsg.id, action: 'sendMessage', payload: payload, type: 'text' });
+        showLoveToast("📡 Saved to Outbox (Offline). Will send to Yash automatically once connected!", "⏳");
+        return;
+    }
+
     callTelegramApi('sendMessage', payload)
     .then(data => {
         if (data && data.ok && data.result && data.result.message_id) {
-            const history = getChatHistory();
-            const item = history.find(m => m.id === newMsg.id);
-            if (item) {
-                item.telegramMessageId = data.result.message_id;
-                localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
-                renderSecretChat();
-            }
+            newMsg.telegramMessageId = data.result.message_id;
+            newMsg.status = 'sent';
+            saveChatMessage(newMsg);
+        } else {
+            newMsg.status = 'pending';
+            saveChatMessage(newMsg);
+            queueForOutbox({ id: newMsg.id, action: 'sendMessage', payload: payload, type: 'text' });
+            showLoveToast("⏳ Message saved to Outbox! Auto-sending once connected.", "📡");
         }
         setTimeout(checkTelegramReplies, 1500);
     })
-    .catch(error => console.error("Cloud sync error."));
+    .catch(error => {
+        console.error("Cloud sync error:", error);
+        newMsg.status = 'pending';
+        saveChatMessage(newMsg);
+        queueForOutbox({ id: newMsg.id, action: 'sendMessage', payload: payload, type: 'text' });
+    });
 }
 
 // === VOICE RECORDING LOGIC ===
@@ -1167,6 +1224,7 @@ function setupVoiceRecording() {
 }
 
 function sendSecretVoice(audioBlob) {
+    const isOffline = !navigator.onLine;
     const objectUrl = URL.createObjectURL(audioBlob);
     
     const newMsg = {
@@ -1176,6 +1234,7 @@ function sendSecretVoice(audioBlob) {
         timestamp: Date.now(),
         isPartner: false,
         type: 'voice',
+        status: isOffline ? 'pending' : 'sending',
         stickerUrl: objectUrl,
         replyTo: typeof activeReplyState !== 'undefined' && activeReplyState ? { text: activeReplyState.text } : null
     };
@@ -1187,27 +1246,43 @@ function sendSecretVoice(audioBlob) {
 
     const reader = new FileReader();
     reader.onloadend = () => {
-        callTelegramApi('sendVoice', {
+        newMsg.stickerUrl = reader.result;
+        saveChatMessage(newMsg);
+
+        const voicePayload = {
             voice: reader.result,
             caption: `💌 Voice Note from ${CONFIG.partnerName}`,
             reply_to_message_id: replyId
-        })
+        };
+
+        if (isOffline) {
+            queueForOutbox({ id: newMsg.id, action: 'sendVoice', payload: voicePayload, type: 'voice' });
+            showLoveToast("🎤 Voice note saved to Outbox! Auto-sending once connected.", "⏳");
+            return;
+        }
+
+        callTelegramApi('sendVoice', voicePayload)
         .then(data => {
             if (data && data.ok && data.result && data.result.message_id) {
-                const history = getChatHistory();
-                const item = history.find(m => m.id === newMsg.id);
-                if (item) {
-                    item.telegramMessageId = data.result.message_id;
-                    if (data.result.voice) {
-                        item.stickerFileId = data.result.voice.file_id;
-                    }
-                    localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
-                    renderSecretChat();
+                newMsg.telegramMessageId = data.result.message_id;
+                newMsg.status = 'sent';
+                if (data.result.voice) {
+                    newMsg.stickerFileId = data.result.voice.file_id;
                 }
+                saveChatMessage(newMsg);
+            } else {
+                newMsg.status = 'pending';
+                saveChatMessage(newMsg);
+                queueForOutbox({ id: newMsg.id, action: 'sendVoice', payload: voicePayload, type: 'voice' });
+                showLoveToast("⏳ Voice note saved to Outbox! Auto-sending once connected.", "📡");
             }
             setTimeout(checkTelegramReplies, 1500);
         })
-        .catch(error => console.error("Cloud sync error."));
+        .catch(error => {
+            newMsg.status = 'pending';
+            saveChatMessage(newMsg);
+            queueForOutbox({ id: newMsg.id, action: 'sendVoice', payload: voicePayload, type: 'voice' });
+        });
     };
     reader.readAsDataURL(audioBlob);
 }
@@ -1435,6 +1510,7 @@ function setupCameraSnap() {
 
 function sendSecretPhoto(photoBlob, caption = "Photo 📸") {
     if (!photoBlob) return;
+    const isOffline = !navigator.onLine;
     const objectUrl = URL.createObjectURL(photoBlob);
     const msgId = 'msg_photo_' + Date.now();
 
@@ -1445,6 +1521,7 @@ function sendSecretPhoto(photoBlob, caption = "Photo 📸") {
         timestamp: Date.now(),
         isPartner: false,
         type: 'photo',
+        status: isOffline ? 'pending' : 'sending',
         stickerUrl: objectUrl,
         replyTo: typeof activeReplyState !== 'undefined' && activeReplyState ? { text: activeReplyState.text } : null
     };
@@ -1457,28 +1534,42 @@ function sendSecretPhoto(photoBlob, caption = "Photo 📸") {
 
     const reader = new FileReader();
     reader.onloadend = () => {
-        callTelegramApi('sendPhoto', {
+        newMsg.stickerUrl = reader.result;
+        saveChatMessage(newMsg);
+
+        const photoPayload = {
             photo: reader.result,
-            caption: `📸 Secret Photo from ${CONFIG.partnerName}! 💕`,
+            caption: `📸 Secret Photo from ${CONFIG.partnerName}! 💕` + (caption && caption !== 'Photo 📸' ? `\n\n"${caption}"` : ''),
             reply_to_message_id: replyId
-        })
+        };
+
+        if (isOffline) {
+            queueForOutbox({ id: newMsg.id, action: 'sendPhoto', payload: photoPayload, type: 'photo' });
+            showLoveToast("📸 Photo saved to Outbox! Auto-sending once connected.", "⏳");
+            return;
+        }
+
+        callTelegramApi('sendPhoto', photoPayload)
         .then(data => {
             if (data && data.ok && data.result && data.result.message_id) {
-                const history = getChatHistory();
-                const item = history.find(m => m.id === newMsg.id);
-                if (item) {
-                    item.telegramMessageId = data.result.message_id;
-                    if (data.result.photo && data.result.photo.length > 0) {
-                        item.stickerFileId = data.result.photo[data.result.photo.length - 1].file_id;
-                    }
-                    localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
-                    renderSecretChat();
+                newMsg.telegramMessageId = data.result.message_id;
+                newMsg.status = 'sent';
+                if (data.result.photo && data.result.photo.length > 0) {
+                    newMsg.stickerFileId = data.result.photo[data.result.photo.length - 1].file_id;
                 }
+                saveChatMessage(newMsg);
+            } else {
+                newMsg.status = 'pending';
+                saveChatMessage(newMsg);
+                queueForOutbox({ id: newMsg.id, action: 'sendPhoto', payload: photoPayload, type: 'photo' });
+                showLoveToast("⏳ Photo saved to Outbox! Auto-sending once connected.", "📡");
             }
             setTimeout(checkTelegramReplies, 1500);
         })
         .catch(err => {
-            console.error("Error sending photo to Telegram:", err);
+            newMsg.status = 'pending';
+            saveChatMessage(newMsg);
+            queueForOutbox({ id: newMsg.id, action: 'sendPhoto', payload: photoPayload, type: 'photo' });
         });
     };
     reader.readAsDataURL(photoBlob);
@@ -1510,6 +1601,7 @@ function sendSecretEdit(text) {
 
 function sendSecretSticker(sticker) {
     if (!sticker) return;
+    const isOffline = !navigator.onLine;
 
     const isEmoji = sticker.isEmoji || !sticker.url;
     const msgId = 'msg_stk_' + Date.now();
@@ -1517,6 +1609,7 @@ function sendSecretSticker(sticker) {
         id: msgId,
         sender: CONFIG.partnerName,
         type: 'sticker',
+        status: isOffline ? 'pending' : 'sending',
         stickerUrl: sticker.url || '',
         stickerEmoji: sticker.emoji || '💖',
         text: sticker.name || sticker.emoji || 'Sticker',
@@ -1526,8 +1619,6 @@ function sendSecretSticker(sticker) {
     };
 
     saveChatMessage(newMsg);
-
-    // Audio chime feedback
     playTapTone("Heart");
 
     // Close sticker picker drawer
@@ -1540,63 +1631,41 @@ function sendSecretSticker(sticker) {
         ? parseInt(activeReplyState.telegramId) : undefined;
     if (typeof cancelReply !== 'undefined') cancelReply();
 
-    if (isEmoji) {
-        callTelegramApi('sendMessage', {
-            text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji} ${sticker.name ? '(' + sticker.name + ')' : ''}`,
-            reply_to_message_id: replyId
-        })
-        .then(data => {
-            if (data && data.ok && data.result && data.result.message_id) {
-                const history = getChatHistory();
-                const item = history.find(m => m.id === newMsg.id);
-                if (item) {
-                    item.telegramMessageId = data.result.message_id;
-                    localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
-                }
-            }
-            setTimeout(checkTelegramReplies, 1500);
-        })
-        .catch(e => console.error("Cloud sync error."));
-    } else {
-        const action = sticker.isAnim ? 'sendAnimation' : 'sendPhoto';
-        const payload = {
-            [sticker.isAnim ? 'animation' : 'photo']: sticker.url,
-            caption: `💌 Sticker from ${CONFIG.partnerName}: ${sticker.emoji || '💕'} ${sticker.name || ''}`,
-            reply_to_message_id: replyId
-        };
-        callTelegramApi(action, payload)
-        .then(resData => {
-            if (!resData.ok) {
-                console.warn("Media send failed, falling back to message:", resData);
-                callTelegramApi('sendMessage', {
-                    text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji || '💖'} ${sticker.name || ''}\n${sticker.url}`
-                })
-                .then(rData => {
-                    if (rData && rData.ok && rData.result && rData.result.message_id) {
-                        const history = getChatHistory();
-                        const item = history.find(m => m.id === newMsg.id);
-                        if (item) {
-                            item.telegramMessageId = rData.result.message_id;
-                            localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
-                        }
-                    }
-                });
-            } else {
-                if (resData && resData.ok && resData.result && resData.result.message_id) {
-                    const history = getChatHistory();
-                    const item = history.find(m => m.id === newMsg.id);
-                    if (item) {
-                        item.telegramMessageId = resData.result.message_id;
-                        localStorage.setItem('studyflow_chat_history', JSON.stringify(history));
-                    }
-                }
-            }
-            setTimeout(checkTelegramReplies, 1500);
-        })
-        .catch(e => {
-            console.error("Cloud sync error.", e);
-        });
+    const action = isEmoji ? 'sendMessage' : (sticker.isAnim ? 'sendAnimation' : 'sendPhoto');
+    const payload = isEmoji ? {
+        text: `💌 Sticker from ${CONFIG.partnerName}:\n\n${sticker.emoji} ${sticker.name ? '(' + sticker.name + ')' : ''}`,
+        reply_to_message_id: replyId
+    } : {
+        [sticker.isAnim ? 'animation' : 'photo']: sticker.url,
+        caption: `💌 Sticker from ${CONFIG.partnerName}: ${sticker.emoji || '💕'} ${sticker.name || ''}`,
+        reply_to_message_id: replyId
+    };
+
+    if (isOffline) {
+        queueForOutbox({ id: newMsg.id, action: action, payload: payload, type: 'sticker' });
+        showLoveToast("🥰 Sticker saved to Outbox! Auto-sending once connected.", "⏳");
+        return;
     }
+
+    callTelegramApi(action, payload)
+    .then(data => {
+        if (data && data.ok && data.result && data.result.message_id) {
+            newMsg.telegramMessageId = data.result.message_id;
+            newMsg.status = 'sent';
+            saveChatMessage(newMsg);
+        } else {
+            newMsg.status = 'pending';
+            saveChatMessage(newMsg);
+            queueForOutbox({ id: newMsg.id, action: action, payload: payload, type: 'sticker' });
+            showLoveToast("⏳ Sticker saved to Outbox! Auto-sending once connected.", "📡");
+        }
+        setTimeout(checkTelegramReplies, 1500);
+    })
+    .catch(e => {
+        newMsg.status = 'pending';
+        saveChatMessage(newMsg);
+        queueForOutbox({ id: newMsg.id, action: action, payload: payload, type: 'sticker' });
+    });
 }
 
 function initStickerPicker() {
@@ -2210,6 +2279,850 @@ function initPhotoGallery() {
     }
 }
 
+// =========================================================================
+// SWEET TOAST NOTIFICATION
+// =========================================================================
+function showLoveToast(message, emoji = '💖') {
+    const container = document.getElementById("love-toast-container");
+    if (!container) return;
+    const toast = document.createElement("div");
+    toast.className = "love-toast";
+    toast.innerHTML = `<span style="font-size:1.2rem; flex-shrink:0;">${escapeHTML(emoji)}</span><span>${escapeHTML(message)}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        if (toast && toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+        }
+    }, 4000);
+}
+
+// =========================================================================
+// OFFLINE OUTBOX & AUTO-SYNC ENGINE
+// =========================================================================
+function getOfflineOutbox() {
+    try {
+        const raw = localStorage.getItem('studyflow_offline_outbox');
+        if (!raw) return [];
+        const key = getVaultKey();
+        const decrypted = decryptVaultData(raw, key);
+        return JSON.parse(decrypted) || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveOfflineOutbox(queue) {
+    try {
+        const key = getVaultKey();
+        localStorage.setItem('studyflow_offline_outbox', encryptVaultData(JSON.stringify(queue), key));
+        updateOutboxIndicator();
+    } catch (e) {
+        console.error("Outbox save error:", e);
+    }
+}
+
+function queueForOutbox(item) {
+    const queue = getOfflineOutbox();
+    if (!queue.some(q => q.id === item.id)) {
+        queue.push(item);
+        saveOfflineOutbox(queue);
+    }
+    updateOutboxIndicator();
+}
+
+function removeFromOutbox(id) {
+    const queue = getOfflineOutbox().filter(q => q.id !== id);
+    saveOfflineOutbox(queue);
+    updateOutboxIndicator();
+}
+
+function updateOutboxIndicator(isSyncing = false) {
+    const pill = document.getElementById("chat-status-pill");
+    const dot = document.getElementById("chat-status-dot");
+    const text = document.getElementById("chat-status-text");
+    if (!pill || !dot || !text) return;
+
+    const queue = getOfflineOutbox();
+    const isOnline = navigator.onLine;
+
+    if (isSyncing) {
+        pill.className = "chat-status-pill syncing";
+        dot.className = "status-dot syncing";
+        text.textContent = "Syncing messages to Telegram... 🚀";
+    } else if (!isOnline) {
+        pill.className = "chat-status-pill offline";
+        dot.className = "status-dot offline";
+        text.textContent = queue.length > 0 
+            ? `Offline Outbox (${queue.length} pending ⏳)`
+            : "Offline Mode (Local Storage)";
+    } else if (queue.length > 0) {
+        pill.className = "chat-status-pill offline";
+        dot.className = "status-dot offline";
+        text.textContent = `Outbox: ${queue.length} ready to sync ⏳`;
+    } else {
+        pill.className = "chat-status-pill";
+        dot.className = "status-dot";
+        text.textContent = "Live Telegram Sync";
+    }
+}
+
+let isFlushingOutbox = false;
+async function flushOfflineOutbox() {
+    if (isFlushingOutbox || !navigator.onLine) return;
+    const queue = getOfflineOutbox();
+    if (queue.length === 0) {
+        updateOutboxIndicator();
+        return;
+    }
+
+    isFlushingOutbox = true;
+    updateOutboxIndicator(true);
+
+    let sentCount = 0;
+    try {
+        for (const item of [...queue]) {
+            if (!navigator.onLine) break;
+
+            const res = await callTelegramApi(item.action, item.payload);
+            if (res && res.ok && res.result && res.result.message_id) {
+                const history = getChatHistory();
+                const chatMsg = history.find(m => m.id === item.id);
+                if (chatMsg) {
+                    chatMsg.status = 'sent';
+                    chatMsg.telegramMessageId = res.result.message_id;
+                    if (res.result.voice && res.result.voice.file_id) {
+                        chatMsg.stickerFileId = res.result.voice.file_id;
+                    } else if (res.result.photo && res.result.photo.length > 0) {
+                        chatMsg.stickerFileId = res.result.photo[res.result.photo.length - 1].file_id;
+                    }
+                    saveChatMessage(chatMsg);
+                }
+                removeFromOutbox(item.id);
+                sentCount++;
+            } else {
+                // Connection or Telegram API temporarily unavailable; pause flush
+                break;
+            }
+        }
+    } catch (e) {
+        console.warn("Outbox flush paused:", e);
+    } finally {
+        isFlushingOutbox = false;
+        renderSecretChat();
+        updateOutboxIndicator();
+        if (sentCount > 0) {
+            showLoveToast(`✨ Reconnected! Sent ${sentCount} offline message${sentCount > 1 ? 's' : ''} to Yash.`);
+        }
+    }
+}
+
+function initOfflineOutbox() {
+    window.addEventListener('online', () => {
+        updateOutboxIndicator();
+        flushOfflineOutbox();
+        checkTelegramReplies();
+    });
+    window.addEventListener('offline', () => {
+        updateOutboxIndicator();
+    });
+    updateOutboxIndicator();
+    if (navigator.onLine) {
+        flushOfflineOutbox();
+    }
+}
+
+// =========================================================================
+// DAILY CARE & LOVE REMINDERS ENGINE (100% OFFLINE)
+// =========================================================================
+const DEFAULT_CARE_REMINDERS = [
+    {
+        id: "rem_water_1",
+        title: "Morning Hydration",
+        emoji: "💧",
+        time: "10:00",
+        displayTime: "10:00 AM",
+        message: "Paani pi lo meri jaan! Ek poora glass paani abhi piyo. Stay hydrated 💦",
+        enabled: true
+    },
+    {
+        id: "rem_love_note",
+        title: "Midday Love Thought",
+        emoji: "💖",
+        time: "11:30",
+        displayTime: "11:30 AM",
+        message: "Bas yaad dila raha tha: I Love You bohot bohot sara! You're my world 🥰",
+        enabled: true
+    },
+    {
+        id: "rem_lunch",
+        title: "Lunch Care",
+        emoji: "🍱",
+        time: "13:30",
+        displayTime: "01:30 PM",
+        message: "Babu, khana time se kha lena! No skipping meals, please! 🍱💕",
+        enabled: true
+    },
+    {
+        id: "rem_water_2",
+        title: "Afternoon Hydration",
+        emoji: "💧",
+        time: "15:30",
+        displayTime: "03:30 PM",
+        message: "Paani ka doosra round! Skin aur health ke liye hydration is must 💧🌸",
+        enabled: true
+    },
+    {
+        id: "rem_rest",
+        title: "Evening Study Break",
+        emoji: "☕",
+        time: "17:30",
+        displayTime: "05:30 PM",
+        message: "Padhai se 5 minute ka break le lo cutie pie. Ankhein band karo aur stretch karo ☕✨",
+        enabled: true
+    },
+    {
+        id: "rem_sleep",
+        title: "Night Sleep Tight",
+        emoji: "🌙",
+        time: "23:00",
+        displayTime: "11:00 PM",
+        message: "Time se so jao meri pyaari wife! Sweet dreams, sapno me milte hain ❤️🌙",
+        enabled: true
+    }
+];
+
+function getCareReminders() {
+    try {
+        const raw = localStorage.getItem('studyflow_care_reminders');
+        if (!raw) return DEFAULT_CARE_REMINDERS;
+        return JSON.parse(raw);
+    } catch (e) {
+        return DEFAULT_CARE_REMINDERS;
+    }
+}
+
+function saveCareReminders(list) {
+    try {
+        localStorage.setItem('studyflow_care_reminders', JSON.stringify(list));
+    } catch (e) {}
+}
+
+function renderCareReminders() {
+    const grid = document.getElementById("reminder-items-grid");
+    if (!grid) return;
+    const reminders = getCareReminders();
+
+    grid.innerHTML = reminders.map(r => `
+        <div class="reminder-item-card">
+            <div class="reminder-item-left">
+                <span class="reminder-item-emoji">${escapeHTML(r.emoji)}</span>
+                <div>
+                    <h3 class="reminder-item-title">${escapeHTML(r.title)}</h3>
+                    <p class="reminder-item-msg">${escapeHTML(r.message)}</p>
+                    <div class="reminder-time-badges">
+                        <span class="reminder-time-badge">⏰ ${escapeHTML(r.displayTime)}</span>
+                    </div>
+                </div>
+            </div>
+            <label class="reminder-toggle-label" title="Enable/Disable reminder">
+                <input type="checkbox" data-reminder-id="${escapeHTML(r.id)}" ${r.enabled ? 'checked' : ''} onchange="toggleCareReminder('${escapeHTML(r.id)}', this.checked)">
+                <span class="reminder-toggle-slider"></span>
+            </label>
+        </div>
+    `).join("");
+}
+
+function toggleCareReminder(id, isChecked) {
+    const list = getCareReminders();
+    const item = list.find(r => r.id === id);
+    if (item) {
+        item.enabled = isChecked;
+        saveCareReminders(list);
+        showLoveToast(isChecked ? `Reminder activated ⏰` : `Reminder turned off`, isChecked ? "🔔" : "🔕");
+    }
+}
+
+function showReminderPopup(reminder) {
+    const modal = document.getElementById("reminder-popup-modal");
+    const emoji = document.getElementById("reminder-popup-emoji");
+    const title = document.getElementById("reminder-popup-title");
+    const msg = document.getElementById("reminder-popup-msg");
+    const time = document.getElementById("reminder-popup-time");
+
+    if (emoji) emoji.textContent = reminder.emoji || "💖";
+    if (title) title.textContent = reminder.title ? `Yash Ka Reminder: ${reminder.title}` : "Yash Ka Care Reminder";
+    if (msg) msg.textContent = reminder.message || "I Love You!";
+    if (time) time.textContent = `Scheduled for ${reminder.displayTime}`;
+
+    if (modal) modal.classList.remove("hide");
+    playTapTone("Heart");
+
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+            new Notification(`${reminder.emoji} ${reminder.title} - Yash`, {
+                body: reminder.message,
+                icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💖</text></svg>"
+            });
+        } catch (e) {}
+    }
+}
+
+function checkDailyReminders() {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const currentTimeStr = `${hours}:${minutes}`;
+    const todayStr = now.toISOString().slice(0, 10);
+
+    const firedKey = `studyflow_fired_reminders_${todayStr}`;
+    let firedList = [];
+    try {
+        firedList = JSON.parse(localStorage.getItem(firedKey) || "[]");
+    } catch (e) {}
+
+    const reminders = getCareReminders();
+    reminders.forEach(r => {
+        if (r.enabled && r.time === currentTimeStr && !firedList.includes(r.id)) {
+            firedList.push(r.id);
+            try { localStorage.setItem(firedKey, JSON.stringify(firedList)); } catch (e) {}
+            showReminderPopup(r);
+        }
+    });
+}
+
+function exportToPhoneCalendar() {
+    const reminders = getCareReminders().filter(r => r.enabled);
+    if (reminders.length === 0) {
+        showLoveToast("Please enable at least one reminder to export!", "⚠️");
+        return;
+    }
+
+    let icsLines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Yash and Mukku//Daily Love Reminders//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Yash's Care for Mukku 💖",
+        "X-WR-TIMEZONE:Asia/Kolkata"
+    ];
+
+    reminders.forEach((r, idx) => {
+        const [hh, mm] = r.time.split(":");
+        const timePart = `${hh}${mm}00`;
+        const uid = `mukku_care_${r.id}_${idx}@studyflow.love`;
+        const summary = `${r.emoji} ${r.title} - Yash 💕`;
+        const cleanMsg = (r.message || '').replace(/\n/g, '\\n').replace(/,/g, '\\,');
+
+        icsLines.push("BEGIN:VEVENT");
+        icsLines.push(`UID:${uid}`);
+        icsLines.push(`SUMMARY:${summary}`);
+        icsLines.push(`DESCRIPTION:${cleanMsg}`);
+        icsLines.push(`DTSTART:20260101T${timePart}`);
+        icsLines.push(`DTEND:20260101T${timePart}`);
+        icsLines.push("RRULE:FREQ=DAILY");
+        icsLines.push("BEGIN:VALARM");
+        icsLines.push("TRIGGER:-PT0M");
+        icsLines.push("ACTION:DISPLAY");
+        icsLines.push(`DESCRIPTION:${cleanMsg}`);
+        icsLines.push("END:VALARM");
+        icsLines.push("END:VEVENT");
+    });
+
+    icsLines.push("END:VCALENDAR");
+
+    const icsContent = icsLines.join("\r\n");
+    const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "yash_daily_care_reminders.ics";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showLoveToast("📅 Calendar file downloaded! Open it to add recurring phone alarms.", "🌸");
+}
+
+function setupRemindersUI() {
+    renderCareReminders();
+
+    const calBtn = document.getElementById("export-calendar-btn");
+    if (calBtn) {
+        calBtn.addEventListener("click", exportToPhoneCalendar);
+    }
+
+    const testBtn = document.getElementById("test-reminder-btn");
+    if (testBtn) {
+        testBtn.addEventListener("click", () => {
+            const list = getCareReminders();
+            const first = list[0] || DEFAULT_CARE_REMINDERS[0];
+            showReminderPopup(first);
+        });
+    }
+
+    const notifBtn = document.getElementById("enable-notifications-btn");
+    const notifText = document.getElementById("notif-btn-text");
+    if (notifBtn && typeof Notification !== 'undefined') {
+        if (Notification.permission === 'granted') {
+            if (notifText) notifText.textContent = "Notifications Active ✓";
+            notifBtn.style.borderColor = "#10b981";
+            notifBtn.style.color = "#10b981";
+        }
+        notifBtn.addEventListener("click", async () => {
+            if (Notification.permission === 'granted') {
+                showLoveToast("In-app notifications are already active!", "🔔");
+                return;
+            }
+            try {
+                const perm = await Notification.requestPermission();
+                if (perm === 'granted') {
+                    if (notifText) notifText.textContent = "Notifications Active ✓";
+                    notifBtn.style.borderColor = "#10b981";
+                    notifBtn.style.color = "#10b981";
+                    showLoveToast("Notifications enabled! You will get alerts for reminders.", "🎉");
+                } else {
+                    showLoveToast("Permission not granted. Calendar alarms will still work offline!", "ℹ️");
+                }
+            } catch (e) {
+                console.warn("Notification request error:", e);
+            }
+        });
+    }
+
+    const closePopupBtn = document.getElementById("close-reminder-popup-btn");
+    if (closePopupBtn) {
+        closePopupBtn.addEventListener("click", () => {
+            const modal = document.getElementById("reminder-popup-modal");
+            if (modal) modal.classList.add("hide");
+            playTapTone("Kiss");
+        });
+    }
+
+    // Check every 30 seconds for daily schedule
+    setInterval(checkDailyReminders, 30000);
+}
+
+// =========================================================================
+// SCHEDULED LOVE MESSAGES ENGINE (Subah Schedule, Day-Long Delivery)
+// =========================================================================
+
+function formatTimeFromHHMM(hhmm) {
+    if (!hhmm || typeof hhmm !== 'string' || !hhmm.includes(':')) return hhmm || '';
+    const parts = hhmm.split(':');
+    let h = parseInt(parts[0], 10);
+    const m = parts[1];
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    h = h ? h : 12;
+    return `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+}
+
+function getTodayDateString() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function getScheduledMessages() {
+    try {
+        const raw = localStorage.getItem('studyflow_scheduled_messages');
+        if (!raw) return [];
+        const key = getVaultKey();
+        const decrypted = decryptVaultData(raw, key);
+        const list = JSON.parse(decrypted) || [];
+        
+        // Purge messages older than 2 days to keep vault clean
+        const twoDaysAgo = Date.now() - (2 * 24 * 60 * 60 * 1000);
+        return list.filter(item => (item.created || 0) > twoDaysAgo);
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveScheduledMessages(list) {
+    try {
+        const key = getVaultKey();
+        localStorage.setItem('studyflow_scheduled_messages', encryptVaultData(JSON.stringify(list), key));
+    } catch (e) {
+        console.error("Scheduled messages save error:", e);
+    }
+}
+
+function calculateScheduledTimestamp(timeStr) {
+    if (!timeStr || !timeStr.includes(':')) return Date.now();
+    const parts = timeStr.split(':');
+    const d = new Date();
+    d.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
+    return d.getTime();
+}
+
+async function syncScheduledMessageToCloud(item) {
+    if (isLocalStaticEnvironment() || !navigator.onLine) return;
+    const token = getSessionToken();
+    if (!token) return;
+
+    try {
+        await fetch(getApiEndpoint('/api/schedule?action=create'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                action: 'create',
+                id: item.id,
+                text: item.text,
+                time: item.time,
+                displayTime: item.displayTime,
+                date: item.date,
+                scheduledTimestamp: item.scheduledTimestamp
+            })
+        });
+        console.log(`[Cloud Scheduler] Synced message (${item.displayTime}) to cloud server queue!`);
+    } catch (e) {
+        console.warn("[Cloud Scheduler] Sync warning:", e.message);
+    }
+}
+
+async function deleteScheduledMessageFromCloud(id) {
+    if (isLocalStaticEnvironment() || !navigator.onLine) return;
+    const token = getSessionToken();
+    if (!token) return;
+
+    try {
+        await fetch(getApiEndpoint('/api/schedule?action=delete'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ action: 'delete', id: id })
+        });
+    } catch (e) {}
+}
+
+async function fetchCloudScheduledMessages() {
+    if (isLocalStaticEnvironment() || !navigator.onLine) return;
+    const token = getSessionToken();
+    if (!token) return;
+
+    try {
+        const res = await fetch(getApiEndpoint('/api/schedule?action=list'), {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data && data.ok && Array.isArray(data.items)) {
+                const localList = getScheduledMessages();
+                let updated = false;
+
+                data.items.forEach(serverItem => {
+                    const localItem = localList.find(l => l.id === serverItem.id);
+                    if (localItem) {
+                        if (serverItem.sent && !localItem.sent) {
+                            localItem.sent = true;
+                            localItem.sentAt = serverItem.sentAt;
+                            localItem.status = 'sent';
+                            updated = true;
+                        }
+                    } else if (!serverItem.sent) {
+                        localList.push(serverItem);
+                        updated = true;
+                    }
+                });
+
+                if (updated) {
+                    saveScheduledMessages(localList);
+                    renderScheduledMessages();
+                }
+            }
+        }
+    } catch (e) {}
+}
+
+function addScheduledMessage(text, timeStr) {
+    if (!text || !text.trim()) {
+        showLoveToast("Please type a message first! 💌", "⚠️");
+        return false;
+    }
+    if (!timeStr) {
+        showLoveToast("Please select a time for the message! ⏰", "⚠️");
+        return false;
+    }
+
+    const cleanText = text.trim();
+    const today = getTodayDateString();
+    const displayTime = formatTimeFromHHMM(timeStr);
+    const scheduledTimestamp = calculateScheduledTimestamp(timeStr);
+
+    const newItem = {
+        id: 'sched_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        text: cleanText,
+        time: timeStr,
+        displayTime: displayTime,
+        date: today,
+        scheduledTimestamp: scheduledTimestamp,
+        created: Date.now(),
+        sent: false,
+        sentAt: null,
+        status: 'pending'
+    };
+
+    const list = getScheduledMessages();
+    list.push(newItem);
+    saveScheduledMessages(list);
+    renderScheduledMessages();
+
+    // Sync to Cloud Server Queue so server can autonomously dispatch even if phone is OFF!
+    syncScheduledMessageToCloud(newItem);
+
+    showLoveToast(`Message scheduled for ${displayTime}! Yash will receive it right on time 💕`, "⏰");
+    playTapTone("Heart");
+
+    // Check immediately in case time is already past or current minute
+    checkAndDispatchScheduledMessages();
+    return true;
+}
+
+function deleteScheduledMessage(id) {
+    const list = getScheduledMessages();
+    const updated = list.filter(item => item.id !== id);
+    saveScheduledMessages(updated);
+    renderScheduledMessages();
+    deleteScheduledMessageFromCloud(id);
+    showLoveToast("Scheduled message cancelled.", "🗑️");
+}
+
+function renderScheduledMessages() {
+    const container = document.getElementById("scheduled-items-list");
+    if (!container) return;
+
+    const list = getScheduledMessages();
+    const today = getTodayDateString();
+    // Show today's messages first, sorted by time
+    const todayItems = list.filter(item => item.date === today);
+    todayItems.sort((a, b) => a.time.localeCompare(b.time));
+
+    if (todayItems.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:1.2rem 0.5rem; color:var(--disguise-text-muted); font-size:0.8rem;">
+                <span>🌸</span> Koi message scheduled nahi hai abhi.<br>
+                Upar kisi chip par click karo ya apna message type karke time set karo!
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = todayItems.map(item => `
+        <div class="sched-item-card ${item.sent ? 'sent' : ''}" data-sched-id="${escapeHTML(item.id)}">
+            <div class="sched-item-left">
+                <span class="sched-time-badge">${escapeHTML(item.displayTime)}</span>
+                <p class="sched-item-text" title="${escapeHTML(item.text)}">${escapeHTML(item.text)}</p>
+            </div>
+            <div class="sched-item-actions">
+                ${item.sent 
+                    ? `<span class="sched-status-tag sent">✓ Delivered</span>` 
+                    : `<span class="sched-status-tag pending">⏳ Scheduled</span>`}
+                <button type="button" class="sched-delete-btn" title="Cancel/Delete" onclick="deleteScheduledMessage('${escapeHTML(item.id)}')">🗑️</button>
+            </div>
+        </div>
+    `).join("");
+}
+
+function dispatchScheduledMessage(item) {
+    const cleanMsg = item.text;
+    const isOffline = !navigator.onLine;
+
+    // Record into local chat history
+    const newMsg = {
+        id: 'msg_sched_' + item.id,
+        sender: CONFIG.partnerName,
+        text: `⏰ [Scheduled for ${item.displayTime}]:\n${cleanMsg}`,
+        timestamp: Date.now(),
+        isPartner: false,
+        status: isOffline ? 'pending' : 'sending',
+        isScheduled: true
+    };
+    saveChatMessage(newMsg);
+
+    const telegramText = `⏰ <b>Scheduled Love Note from ${CONFIG.partnerName}</b> 💕\n` +
+                         `🕒 <i>Scheduled for: ${item.displayTime}</i>\n\n` +
+                         `${escapeHTML(cleanMsg)}`;
+
+    const payload = {
+        text: telegramText,
+        parse_mode: 'HTML'
+    };
+
+    if (isOffline) {
+        queueForOutbox({ id: newMsg.id, action: 'sendMessage', payload: payload, type: 'text' });
+        showLoveToast(`⏰ Note for ${item.displayTime} saved to Outbox! Auto-sending once connected.`, "⏳");
+        return;
+    }
+
+    callTelegramApi('sendMessage', payload)
+    .then(data => {
+        if (data && data.ok && data.result && data.result.message_id) {
+            newMsg.telegramMessageId = data.result.message_id;
+            newMsg.status = 'sent';
+            saveChatMessage(newMsg);
+            showLoveToast(`⏰ Scheduled message (${item.displayTime}) delivered to Yash! 💕`, "💌");
+        } else {
+            newMsg.status = 'pending';
+            saveChatMessage(newMsg);
+            queueForOutbox({ id: newMsg.id, action: 'sendMessage', payload: payload, type: 'text' });
+        }
+    })
+    .catch(err => {
+        console.error("Scheduled message dispatch error:", err);
+        newMsg.status = 'pending';
+        saveChatMessage(newMsg);
+        queueForOutbox({ id: newMsg.id, action: 'sendMessage', payload: payload, type: 'text' });
+    });
+}
+
+function checkAndDispatchScheduledMessages() {
+    const list = getScheduledMessages();
+    if (!list || list.length === 0) return;
+
+    const now = Date.now();
+    const today = getTodayDateString();
+    const currentHHMM = String(new Date().getHours()).padStart(2, '0') + ':' + String(new Date().getMinutes()).padStart(2, '0');
+
+    let hasChanges = false;
+
+    for (const item of list) {
+        if (item.sent) continue;
+
+        // If epoch timestamp reached, OR if HH:MM reached
+        const isPastDue = (item.scheduledTimestamp && now >= item.scheduledTimestamp) ||
+                          (item.date < today) ||
+                          (item.date === today && currentHHMM >= item.time);
+
+        if (isPastDue) {
+            dispatchScheduledMessage(item);
+            item.sent = true;
+            item.sentAt = Date.now();
+            item.status = 'sent';
+            hasChanges = true;
+        }
+    }
+
+    if (hasChanges) {
+        saveScheduledMessages(list);
+        renderScheduledMessages();
+    }
+
+    // Sync state with cloud in background
+    fetchCloudScheduledMessages();
+}
+
+function setupScheduledMessagesUI() {
+    const toggleBtn = document.getElementById("schedule-msg-toggle-btn");
+    const panel = document.getElementById("scheduled-messages-panel");
+    const closeBtn = document.getElementById("close-sched-panel-btn");
+    const addBtn = document.getElementById("add-scheduled-msg-btn");
+    const textInput = document.getElementById("sched-input-text");
+    const timeInput = document.getElementById("sched-input-time");
+    const chips = document.querySelectorAll(".sched-chip-btn");
+
+    if (toggleBtn && panel) {
+        toggleBtn.addEventListener("click", () => {
+            const isHidden = panel.classList.contains("hide");
+            if (isHidden) {
+                panel.classList.remove("hide");
+                renderScheduledMessages();
+                if (textInput) textInput.focus();
+            } else {
+                panel.classList.add("hide");
+            }
+        });
+    }
+
+    if (closeBtn && panel) {
+        closeBtn.addEventListener("click", () => {
+            panel.classList.add("hide");
+        });
+    }
+
+    // Preset chip buttons
+    chips.forEach(chip => {
+        chip.addEventListener("click", () => {
+            const timeVal = chip.getAttribute("data-time");
+            const msgVal = chip.getAttribute("data-msg");
+            if (timeInput && timeVal) timeInput.value = timeVal;
+            if (textInput && msgVal) {
+                textInput.value = msgVal;
+                textInput.focus();
+            }
+            playTapTone("Heart");
+        });
+    });
+
+    if (addBtn && textInput && timeInput) {
+        addBtn.addEventListener("click", () => {
+            const text = textInput.value;
+            const time = timeInput.value;
+            const success = addScheduledMessage(text, time);
+            if (success) {
+                textInput.value = "";
+                // Set default time to 1 hour ahead
+                const now = new Date();
+                now.setHours(now.getHours() + 1);
+                timeInput.value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+            }
+        });
+    }
+
+    // Set initial default time in time selector
+    if (timeInput && !timeInput.value) {
+        const now = new Date();
+        now.setHours(now.getHours() + 1);
+        timeInput.value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    }
+
+    // Expose deleteScheduledMessage to global scope for inline button click
+    window.deleteScheduledMessage = deleteScheduledMessage;
+
+    // Render initially
+    renderScheduledMessages();
+
+    // Check periodically every 15 seconds
+    setInterval(checkAndDispatchScheduledMessages, 15000);
+
+    // Also check on visibilitychange and online
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === 'visible') {
+            checkAndDispatchScheduledMessages();
+        }
+    });
+
+    window.addEventListener("online", () => {
+        checkAndDispatchScheduledMessages();
+    });
+}
+
+// =========================================================================
+// SERVICE WORKER REGISTRATION (OFFLINE PWA)
+// =========================================================================
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator && !isLocalStaticEnvironment()) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => {
+                    console.log('StudyFlow ServiceWorker registered with scope:', reg.scope);
+                })
+                .catch(err => {
+                    console.warn('ServiceWorker registration warning:', err);
+                });
+        });
+    }
+}
+
 // Run initialization safely across all environments
 function initApp() {
     initializeSurpriseContent();
@@ -2220,6 +3133,10 @@ function initApp() {
     setupVoiceRecording();
     setupCameraSnap();
     initPhotoGallery();
+    initOfflineOutbox();
+    setupRemindersUI();
+    setupScheduledMessagesUI();
+    registerServiceWorker();
 
     // Silent visit ping to Yash on Telegram (server controlled, rate-limited)
     if (!isLocalStaticEnvironment()) {
@@ -2252,12 +3169,28 @@ function initApp() {
                     renderSecretChat();
                     checkTelegramReplies();
                 }
-            }).catch(() => {});
+            }).catch(() => {
+                try {
+                    const cached = sessionStorage.getItem('studyflow_cached_letter');
+                    if (cached) {
+                        CONFIG.letterParagraphs = JSON.parse(cached);
+                        initializeSurpriseContent();
+                        loadProtectedPhotos();
+                        renderSecretChat();
+                    }
+                } catch (e) {}
+            });
         }
     }
 
     // Poll periodically every 10 seconds for real-time replies (only when unlocked)
-    setInterval(checkTelegramReplies, 10000);
+    setInterval(() => {
+        checkTelegramReplies();
+        if (navigator.onLine) {
+            flushOfflineOutbox();
+        }
+        checkAndDispatchScheduledMessages();
+    }, 10000);
 
     // Initialize Secret WebRTC Calling
     setupCallListeners();
@@ -2269,6 +3202,10 @@ function initApp() {
         if (isLoveOpen && typeof window.markMessagesAsSeen === 'function') {
             window.markMessagesAsSeen();
         }
+        if (navigator.onLine) {
+            flushOfflineOutbox();
+        }
+        checkAndDispatchScheduledMessages();
     });
 }
 
