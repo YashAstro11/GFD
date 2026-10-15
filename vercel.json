@@ -4,12 +4,6 @@
       "includeFiles": "api/photos/**"
     }
   },
-  "crons": [
-    {
-      "path": "/api/schedule?action=cron",
-      "schedule": "0 * * * *"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",
