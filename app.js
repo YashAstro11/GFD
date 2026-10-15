@@ -2688,6 +2688,9 @@ function exportToPhoneCalendar() {
 }
 
 function setupRemindersUI() {
+    const remindersCard = document.getElementById("love-reminders-card");
+    if (!remindersCard) return;
+
     renderCareReminders();
 
     const calBtn = document.getElementById("export-calendar-btn");

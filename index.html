@@ -111,67 +111,7 @@
 
         <main class="love-main">
 
-            <!-- Secret Memory Gallery / Mukku's Photos Card -->
-            <section class="love-card memory-gallery-card" id="memory-gallery-card">
-                <div class="gallery-card-header">
-                    <div class="gallery-title-wrapper">
-                        <span class="gallery-icon">🌸</span>
-                        <div>
-                            <h2 class="card-section-title" style="margin:0; font-size:1.35rem;">Meri Pyaari Mukku</h2>
-                            <p class="gallery-subtitle">Tap &amp; hold or hover to reveal. Click for full view.</p>
-                        </div>
-                    </div>
-                    <span class="privacy-badge" title="Stealth Peek Protection">
-                        <span class="privacy-dot"></span> Privacy Shield
-                    </span>
-                </div>
 
-                <div class="polaroid-grid" id="polaroid-grid">
-                    <div class="polaroid-card" data-index="0" data-photo-id="1" data-caption="Meri choti cutie pie 🥺✨">
-                        <div class="polaroid-img-wrapper">
-                            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300' viewBox='0 0 300 300'><rect width='100%' height='100%' fill='%23ffeef2'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='48'>🌸</text></svg>" alt="Sweet Memory" class="polaroid-img" loading="lazy">
-                            <div class="polaroid-blur-hint">
-                                <span class="hint-icon">🔒</span>
-                                <span class="hint-text">Hold to Peek</span>
-                            </div>
-                        </div>
-                        <div class="polaroid-caption">Cutest Smile Ever 🌸</div>
-                    </div>
-
-                    <div class="polaroid-card" data-index="1" data-photo-id="2" data-caption="Meri jaan, mera sukoon 💖">
-                        <div class="polaroid-img-wrapper">
-                            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300' viewBox='0 0 300 300'><rect width='100%' height='100%' fill='%23ffeef2'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='48'>💖</text></svg>" alt="Sweet Memory" class="polaroid-img" loading="lazy">
-                            <div class="polaroid-blur-hint">
-                                <span class="hint-icon">🔒</span>
-                                <span class="hint-text">Hold to Peek</span>
-                            </div>
-                        </div>
-                        <div class="polaroid-caption">My Sunshine ✨</div>
-                    </div>
-
-                    <div class="polaroid-card" data-index="2" data-photo-id="3" data-caption="Duniya ki sabse pyari ladki 🐱">
-                        <div class="polaroid-img-wrapper">
-                            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300' viewBox='0 0 300 300'><rect width='100%' height='100%' fill='%23ffeef2'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='48'>🐾</text></svg>" alt="Sweet Memory" class="polaroid-img" loading="lazy">
-                            <div class="polaroid-blur-hint">
-                                <span class="hint-icon">🔒</span>
-                                <span class="hint-text">Hold to Peek</span>
-                            </div>
-                        </div>
-                        <div class="polaroid-caption">Little Mukku 🐾</div>
-                    </div>
-
-                    <div class="polaroid-card" data-index="3" data-photo-id="4" data-caption="Sirf aur sirf meri Mukku ❤️">
-                        <div class="polaroid-img-wrapper">
-                            <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300' viewBox='0 0 300 300'><rect width='100%' height='100%' fill='%23ffeef2'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='48'>❤️</text></svg>" alt="Sweet Memory" class="polaroid-img" loading="lazy">
-                            <div class="polaroid-blur-hint">
-                                <span class="hint-icon">🔒</span>
-                                <span class="hint-text">Hold to Peek</span>
-                            </div>
-                        </div>
-                        <div class="polaroid-caption">Endless Love 🌙</div>
-                    </div>
-                </div>
-            </section>
 
             <!-- Heartfelt Letter Card -->
             <section class="love-card letter-card">
@@ -332,40 +272,7 @@
                 </div>
             </section>
 
-            <!-- Daily Care & Love Reminders Card (Works 100% Offline) -->
-            <section class="love-card reminder-card" id="love-reminders-card">
-                <div class="reminder-card-header">
-                    <div class="reminder-header-title">
-                        <span class="reminder-icon">⏰</span>
-                        <div>
-                            <h2 class="card-section-title" style="margin:0; font-size:1.35rem;">Yash's Daily Care Reminders</h2>
-                            <div class="chat-status-pill offline-pill">
-                                <span class="status-dot online"></span> Works 100% Offline (Phone Alarms)
-                            </div>
-                        </div>
-                    </div>
-                    <button id="export-calendar-btn" class="d-btn btn-secondary calendar-export-btn" type="button" title="Download all reminders as a phone alarm calendar file (.ics)">
-                        <span>📅</span> Add to Phone Calendar
-                    </button>
-                </div>
-                
-                <p class="card-desc" style="margin-top: 0.6rem; font-size: 0.85rem; line-height: 1.5;">
-                    Chahe phone me internet data band ho ya phone offline ho, Yash ke pre-set care reminders phone par time se alert karenge! 🌸
-                </p>
 
-                <div class="reminder-items-grid" id="reminder-items-grid">
-                    <!-- Dynamic reminder items rendered by JavaScript -->
-                </div>
-
-                <div class="reminder-action-bar">
-                    <button id="enable-notifications-btn" class="d-btn btn-outline-reminder" type="button">
-                        <span id="notif-btn-icon">🔔</span> <span id="notif-btn-text">Enable In-App Notifications</span>
-                    </button>
-                    <button id="test-reminder-btn" class="d-btn btn-primary" type="button" style="font-size:0.8rem; padding:0.45rem 1rem;">
-                        <span>✨</span> Test Reminder Alert
-                    </button>
-                </div>
-            </section>
 
         </main>
 
@@ -378,21 +285,7 @@
     <!-- Floating Emojis Container -->
     <div id="floating-emojis-container" class="floating-emojis-container"></div>
 
-    <!-- Secret Fullscreen Photo Lightbox Modal -->
-    <div id="photo-lightbox-modal" class="modal-overlay hide">
-        <div class="lightbox-content">
-            <button id="close-lightbox-btn" class="lightbox-close-btn" title="Close (Esc)">✕</button>
-            <div class="lightbox-img-wrapper">
-                <img id="lightbox-img" src="" alt="Mukku" class="lightbox-img">
-            </div>
-            <div class="lightbox-caption" id="lightbox-caption"></div>
-            <div class="lightbox-controls">
-                <button id="lightbox-prev-btn" class="lightbox-nav-btn" title="Previous">◀</button>
-                <span id="lightbox-counter" class="lightbox-counter">1 / 4</span>
-                <button id="lightbox-next-btn" class="lightbox-nav-btn" title="Next">▶</button>
-            </div>
-        </div>
-    </div>
+
 
     <!-- Instant Selfie Camera Modal -->
     <div id="camera-snap-modal" class="modal-overlay hide">
@@ -473,18 +366,7 @@
         </div>
     </div>
 
-    <!-- Offline Care Reminder Popup Modal -->
-    <div id="reminder-popup-modal" class="modal-overlay hide">
-        <div class="modal-card reminder-popup-card">
-            <div class="reminder-popup-emoji" id="reminder-popup-emoji">💧</div>
-            <h3 class="modal-title" id="reminder-popup-title" style="color:var(--disguise-primary); margin-top:0.4rem;">Yash Ka Reminder</h3>
-            <p class="modal-hint reminder-popup-message" id="reminder-popup-msg">Paani pi lo meri jaan! Stay hydrated. 💦</p>
-            <div class="reminder-popup-time" id="reminder-popup-time">Scheduled for 10:00 AM</div>
-            <button id="close-reminder-popup-btn" class="d-btn btn-primary" type="button" style="margin-top: 1.2rem; width: 100%;">
-                Pee Liya / Love You Too 🥰
-            </button>
-        </div>
-    </div>
+
 
     <!-- Toast Notification Container -->
     <div id="love-toast-container" class="love-toast-container"></div>
@@ -492,6 +374,6 @@
     <!-- PeerJS WebRTC Library -->
     <script src="peerjs.min.js"></script>
     <!-- Main JavaScript Logic -->
-    <script src="app.js?v=4.0"></script>
+    <script src="app.js?v=4.1"></script>
 </body>
 </html>
