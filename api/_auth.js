@@ -13,13 +13,13 @@ function validatePasscode(entered) {
     const clean = entered.trim();
     const lower = clean.toLowerCase();
 
-    // 1. Accept canonical passcode (case-insensitive) or anniversary code
-    if (lower === 'yassumukku260327' || lower === '2603' || lower === '260327' || lower === 'yassumukku') {
+    // 1. Accept only the secure private master passphrase (case-insensitive for mobile keyboards)
+    if (lower === 'yassumukku260327') {
         return true;
     }
 
-    // 2. If custom PASSCODE is explicitly configured in Vercel environment
-    if (process.env.PASSCODE) {
+    // 2. If custom PASSCODE is explicitly configured in Vercel environment (must not be legacy 2603)
+    if (process.env.PASSCODE && process.env.PASSCODE.trim() !== '2603') {
         if (clean === process.env.PASSCODE.trim() || lower === process.env.PASSCODE.trim().toLowerCase()) {
             return true;
         }

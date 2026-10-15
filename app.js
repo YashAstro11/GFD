@@ -88,8 +88,7 @@ const ENCRYPTED_LETTER_VAULT = {
 function normalizePasscode(entered) {
     if (!entered || typeof entered !== 'string') return '';
     const clean = entered.trim();
-    const lower = clean.toLowerCase();
-    if (lower === 'yassumukku260327' || lower === '2603' || lower === '260327' || lower === 'yassumukku') {
+    if (clean.toLowerCase() === 'yassumukku260327') {
         return 'YassuMukku260327';
     }
     return clean;
