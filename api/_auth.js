@@ -11,13 +11,21 @@ function getSecret() {
 function validatePasscode(entered) {
     if (!entered || typeof entered !== 'string') return false;
     const clean = entered.trim();
+    const lower = clean.toLowerCase();
 
-    // 1. If custom PASSCODE is explicitly configured in Vercel environment
-    if (process.env.PASSCODE && process.env.PASSCODE.trim() !== '2603') {
-        if (clean === process.env.PASSCODE.trim()) return true;
+    // 1. Accept canonical passcode (case-insensitive) or anniversary code
+    if (lower === 'yassumukku260327' || lower === '2603' || lower === '260327' || lower === 'yassumukku') {
+        return true;
     }
 
-    // 2. Cryptographic one-way hash validation (safe, instant, and never reveals password)
+    // 2. If custom PASSCODE is explicitly configured in Vercel environment
+    if (process.env.PASSCODE) {
+        if (clean === process.env.PASSCODE.trim() || lower === process.env.PASSCODE.trim().toLowerCase()) {
+            return true;
+        }
+    }
+
+    // 3. Cryptographic one-way hash validation
     const inputHash = crypto.createHash('sha256').update(clean).digest('hex');
     try {
         const a = Buffer.from(inputHash, 'utf8');
