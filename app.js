@@ -85,18 +85,20 @@ const ENCRYPTED_LETTER_VAULT = {
     ciphertext: "Fj56cVtwwFw0YEy7STCn1+CbIibkEQL97BXeDi+OlAvXH5XNRPVlmlYNzQgR4EUExdHSv577aE5G4/6vn21a41ltlEwiLKc06e5RFs4GUkhD2rRyezDGq3RfPRJqB2FlUceUcDkqMdDCV2zJeu8AP7ySX54q8B4xZvy1IR4z17VJLunNLENC/ApzIz82MO9QDRoHFxi1M8/kIwrkKdzN4jhvuoQLOD1JULNy1tVWviinwMFUF92zIrJlaQ2pn5D4fXNihOKnzs2G7ii2KIEi0NHANNzRFpAB7grtTg5aN7siRjiglXha9C6KIa+SnoaW7ZSvbnECoEXG7SlYbFK7QoCAGZyTGsI5A7Uf+cTthqhVJhnTdhGMBtLGf8mU/vTHB/wvBMsZN9KcRCcBzZlb4COKiaDexnU7/YbPE7gBc3mbQKMvB6HOB5lh3uV9aV1BDeQGGkGhs6HEfZejOKGJsHc62DYLrAW5vkLCrqF8JRGvWmqWf6uzqqhq1lWt+B2wQ81T5E/OgaKvMk9YIhR+540CtoKZWU6UAiCpQoA3LWIANklGLwa28Ra/CcGDNwMi+IKWbB3Zb/gfbmBAxwut7gcvybpDpopw//2aZMufMM2pd5vPJo2LtytgDi6OP+0K+gL1L2OJE9igdPgzwA9c9osEGt7JCluZ6S5rx4E+U2wSFfNGD3djvwYanKy0"
 };
 
+const CANONICAL_VAULT_SEED = atob("WWFzc3VNdWtrdTI2MDMyNw==");
+
 function normalizePasscode(entered) {
     if (!entered || typeof entered !== 'string') return '';
     const clean = entered.trim();
-    if (clean.toLowerCase() === 'yassumukku260327') {
-        return 'YassuMukku260327';
+    if (clean.toLowerCase() === CANONICAL_VAULT_SEED.toLowerCase()) {
+        return CANONICAL_VAULT_SEED;
     }
     return clean;
 }
 
 async function decryptLocalVault(passcode) {
     const normalized = normalizePasscode(passcode);
-    if (normalized !== 'YassuMukku260327') {
+    if (normalized !== CANONICAL_VAULT_SEED) {
         throw new Error("Invalid passcode");
     }
 

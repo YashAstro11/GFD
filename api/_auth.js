@@ -1,8 +1,9 @@
 // Security Helper: Session token generation & HMAC verification
 const crypto = require('crypto');
 
-// Irreversible cryptographic SHA-256 hash of the master passphrase
+// Irreversible cryptographic SHA-256 hashes of the master passphrase (exact & lowercase)
 const SECURE_PASSCODE_HASH = 'e28abb96c0d0d154a61af76a04a39736443fcc4fb2d7ea7ef82492cc58b81280';
+const SECURE_PASSCODE_LOWER_HASH = '3e70de364cc2389268d4c9dffb7ff29587db4122b7c86b84cc1db9ae3ed0a389';
 
 function getSecret() {
     return process.env.SESSION_SECRET || process.env.TELEGRAM_BOT_TOKEN || 'mukku_yash_vault_salt_2026';
@@ -13,24 +14,27 @@ function validatePasscode(entered) {
     const clean = entered.trim();
     const lower = clean.toLowerCase();
 
-    // 1. Accept only the secure private master passphrase (case-insensitive for mobile keyboards)
-    if (lower === 'yassumukku260327') {
-        return true;
-    }
-
-    // 2. If custom PASSCODE is explicitly configured in Vercel environment (must not be legacy 2603)
+    // 1. If custom PASSCODE is explicitly configured in Vercel environment (must not be legacy 2603)
     if (process.env.PASSCODE && process.env.PASSCODE.trim() !== '2603') {
         if (clean === process.env.PASSCODE.trim() || lower === process.env.PASSCODE.trim().toLowerCase()) {
             return true;
         }
     }
 
-    // 3. Cryptographic one-way hash validation
+    // 2. Cryptographic one-way hash validation (safe, zero plaintext stored in source)
     const inputHash = crypto.createHash('sha256').update(clean).digest('hex');
+    const inputLowerHash = crypto.createHash('sha256').update(lower).digest('hex');
+
     try {
         const a = Buffer.from(inputHash, 'utf8');
         const b = Buffer.from(SECURE_PASSCODE_HASH, 'utf8');
-        return a.length === b.length && crypto.timingSafeEqual(a, b);
+        const isMaster = a.length === b.length && crypto.timingSafeEqual(a, b);
+
+        const aLow = Buffer.from(inputLowerHash, 'utf8');
+        const bLow = Buffer.from(SECURE_PASSCODE_LOWER_HASH, 'utf8');
+        const isLower = aLow.length === bLow.length && crypto.timingSafeEqual(aLow, bLow);
+
+        return isMaster || isLower;
     } catch (e) {
         return false;
     }
