@@ -3111,15 +3111,22 @@ function setupScheduledMessagesUI() {
 // =========================================================================
 function registerServiceWorker() {
     if ('serviceWorker' in navigator && !isLocalStaticEnvironment()) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js')
+        const doRegister = () => {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
                 .then(reg => {
                     console.log('StudyFlow ServiceWorker registered with scope:', reg.scope);
+                    reg.update().catch(() => {});
                 })
                 .catch(err => {
                     console.warn('ServiceWorker registration warning:', err);
                 });
-        });
+        };
+
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            doRegister();
+        } else {
+            window.addEventListener('load', doRegister);
+        }
     }
 }
 

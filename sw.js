@@ -1,5 +1,5 @@
-// StudyFlow / Love Space Offline Service Worker
-const CACHE_NAME = 'studyflow-cache-v1.1';
+// StudyFlow / Love Space Offline Service Worker (v2.0)
+const CACHE_NAME = 'studyflow-cache-v2.0';
 const PRECACHE_ASSETS = [
     '/',
     '/index.html',
@@ -9,17 +9,23 @@ const PRECACHE_ASSETS = [
     '/manifest.json'
 ];
 
+// Install: Cache critical assets individually so failure of one does not break the rest
 self.addEventListener('install', (event) => {
     self.skipWaiting();
     event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-                console.warn('Pre-caching assets warning:', err);
-            });
+        caches.open(CACHE_NAME).then(async (cache) => {
+            for (const asset of PRECACHE_ASSETS) {
+                try {
+                    await cache.add(asset);
+                } catch (err) {
+                    console.warn('Pre-cache asset warning for:', asset, err.message);
+                }
+            }
         })
     );
 });
 
+// Activate: Delete old caches and take control of all clients immediately
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((keys) => {
@@ -34,48 +40,77 @@ self.addEventListener('activate', (event) => {
     );
 });
 
+// Fetch: Autonomous Offline Routing
 self.addEventListener('fetch', (event) => {
     const req = event.request;
     const url = new URL(req.url);
 
-    // Never cache API calls (Vercel serverless / Telegram / file proxy)
+    // 1. NEVER cache serverless API routes (Telegram / verify / schedule / photos)
     if (url.pathname.startsWith('/api/')) {
         return;
     }
 
-    // Only cache GET requests
+    // 2. Only intercept GET requests
     if (req.method !== 'GET') {
         return;
     }
 
-    // Network-First with Cache Fallback for HTML, CSS, JS, Fonts & Assets
+    // 3. Navigation Requests (Address bar typing: gfd-eta.vercel.app, reloads, page navigation)
+    if (req.mode === 'navigate' || req.destination === 'document') {
+        event.respondWith(
+            fetch(req)
+                .then((networkRes) => {
+                    if (networkRes && networkRes.status === 200) {
+                        const resClone = networkRes.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put('/index.html', resClone.clone());
+                            cache.put('/', resClone);
+                        });
+                    }
+                    return networkRes;
+                })
+                .catch(async () => {
+                    // Device is OFFLINE: Serve cached index.html
+                    const cachedHtml = await caches.match('/index.html') 
+                                    || await caches.match('/')
+                                    || await caches.match(req, { ignoreSearch: true });
+                    if (cachedHtml) {
+                        return cachedHtml;
+                    }
+                    return new Response(
+                        '<!DOCTYPE html><html><body style="font-family:sans-serif; text-align:center; padding:3rem 1rem;"><h2>StudyFlow Offline</h2><p>Please open the website once with internet enabled to download offline resources.</p></body></html>',
+                        { status: 503, headers: { 'Content-Type': 'text/html' } }
+                    );
+                })
+        );
+        return;
+    }
+
+    // 4. Static Assets (CSS, JS, Fonts, Icons)
+    // Stale-While-Revalidate: Return cached version immediately (works 100% offline), update in background if online
     event.respondWith(
-        fetch(req)
-            .then((networkRes) => {
+        caches.match(req, { ignoreSearch: true }).then((cachedRes) => {
+            if (cachedRes) {
+                // Fetch update in background if online
+                fetch(req).then((networkRes) => {
+                    if (networkRes && networkRes.status === 200) {
+                        caches.open(CACHE_NAME).then((cache) => cache.put(req, networkRes));
+                    }
+                }).catch(() => {});
+                return cachedRes;
+            }
+
+            // Not yet in cache - fetch from network and store in cache
+            return fetch(req).then((networkRes) => {
                 if (networkRes && networkRes.status === 200) {
                     const resClone = networkRes.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(req, resClone);
-                    });
+                    caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
                 }
                 return networkRes;
-            })
-            .catch(async () => {
-                // Device is offline or server unreachable - serve from cache!
-                const cachedRes = await caches.match(req);
-                if (cachedRes) {
-                    return cachedRes;
-                }
-                // Fallback for navigation requests
-                if (req.mode === 'navigate') {
-                    const fallbackHtml = await caches.match('/index.html');
-                    if (fallbackHtml) return fallbackHtml;
-                }
-                return new Response('Offline: Content not cached yet.', {
-                    status: 503,
-                    statusText: 'Service Unavailable',
-                    headers: { 'Content-Type': 'text/plain' }
-                });
-            })
+            }).catch(async () => {
+                // Offline fallback for script/style
+                return caches.match(req, { ignoreSearch: true });
+            });
+        })
     );
 });

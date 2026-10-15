@@ -15,7 +15,19 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <!-- Main Stylesheet -->
-    <link rel="stylesheet" href="styles.css?v=2.9">
+    <link rel="stylesheet" href="styles.css?v=3.0">
+    <!-- Immediate PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .then(function(reg) {
+                    console.log('StudyFlow Offline ServiceWorker active:', reg.scope);
+                })
+                .catch(function(err) {
+                    console.warn('SW registration warning:', err);
+                });
+        }
+    </script>
 </head>
 <body>
 
@@ -480,6 +492,6 @@
     <!-- PeerJS WebRTC Library -->
     <script src="peerjs.min.js"></script>
     <!-- Main JavaScript Logic -->
-    <script src="app.js?v=3.6"></script>
+    <script src="app.js?v=4.0"></script>
 </body>
 </html>
