@@ -1072,19 +1072,23 @@ function renderSecretChat() {
             `;
         } else if (msg.type === 'voice') {
             const voiceUrl = resolveMediaUrl(msg.stickerUrl, msg.stickerFileId);
-            if (voiceUrl && !voiceUrl.startsWith('blob:')) {
+            if (voiceUrl) {
                 bubbleContent = `
-                    <div class="chat-bubble audio-bubble" style="padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
-                        <audio controls style="max-width: 100%; height: 40px;" src="${escapeHTML(voiceUrl)}">
+                    <div class="chat-bubble audio-bubble" style="padding: 0.6rem 0.8rem; display: flex; flex-direction: column; gap: 0.4rem; min-width: 220px;">
+                        <audio controls preload="metadata" style="max-width: 100%; height: 40px; border-radius: 8px;" src="${escapeHTML(voiceUrl)}">
+                            Your browser does not support audio playback.
                         </audio>
-                        <a href="${escapeHTML(voiceUrl)}" target="_blank" style="font-size: 0.65rem; color: var(--disguise-text-muted); text-align: right; text-decoration: underline;">Download Audio</a>
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size: 0.68rem; color: var(--disguise-text-muted); padding: 0 2px;">
+                            <span>🎤 Voice Note</span>
+                            <a href="${escapeHTML(voiceUrl)}" download="voice_note" target="_blank" style="color: inherit; text-decoration: underline;">Download Audio</a>
+                        </div>
                     </div>
                 `;
             } else {
                 bubbleContent = `
-                    <div class="chat-bubble audio-bubble" style="padding: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <div class="chat-bubble audio-bubble" style="padding: 0.6rem 0.8rem; display: flex; align-items: center; gap: 0.5rem;">
                         <span style="font-size: 1.2rem;">🎤</span>
-                        <span style="font-size: 0.8rem; color: var(--disguise-text-muted);">Voice Note</span>
+                        <span style="font-size: 0.85rem; color: var(--disguise-text-muted);">Voice Note (Loading...)</span>
                     </div>
                 `;
             }
@@ -1240,7 +1244,28 @@ function setupVoiceRecording() {
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
+            
+            // Auto-detect optimal recording format for client & Telegram compatibility:
+            // 1. audio/mp4 (Native Telegram voice note support & 100% iOS/Chrome compatibility)
+            // 2. audio/webm;codecs=opus (Chromium standard)
+            // 3. audio/ogg;codecs=opus (Firefox standard)
+            let selectedMimeType = '';
+            const candidates = [
+                'audio/mp4',
+                'audio/mp4;codecs=aac',
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/ogg;codecs=opus',
+                'audio/ogg'
+            ];
+            for (const candidate of candidates) {
+                if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(candidate)) {
+                    selectedMimeType = candidate;
+                    break;
+                }
+            }
+
+            mediaRecorder = selectedMimeType ? new MediaRecorder(stream, { mimeType: selectedMimeType }) : new MediaRecorder(stream);
             audioChunks = [];
 
             mediaRecorder.ondataavailable = e => {
@@ -1248,7 +1273,8 @@ function setupVoiceRecording() {
             };
 
             mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
+                const actualMime = (mediaRecorder && mediaRecorder.mimeType) || selectedMimeType || 'audio/webm';
+                const audioBlob = new Blob(audioChunks, { type: actualMime });
                 if (audioBlob.size === 0) return;
                 sendSecretVoice(audioBlob);
                 stream.getTracks().forEach(track => track.stop());
@@ -1281,6 +1307,7 @@ function sendSecretVoice(audioBlob) {
         replyTo: typeof activeReplyState !== 'undefined' && activeReplyState ? { text: activeReplyState.text } : null
     };
     saveChatMessage(newMsg);
+    renderSecretChat();
 
     const replyId = (typeof activeReplyState !== 'undefined' && activeReplyState && activeReplyState.telegramId)
         ? parseInt(activeReplyState.telegramId) : undefined;
@@ -1290,6 +1317,7 @@ function sendSecretVoice(audioBlob) {
     reader.onloadend = () => {
         newMsg.stickerUrl = reader.result;
         saveChatMessage(newMsg);
+        renderSecretChat();
 
         const voicePayload = {
             voice: reader.result,
@@ -1308,13 +1336,17 @@ function sendSecretVoice(audioBlob) {
             if (data && data.ok && data.result && data.result.message_id) {
                 newMsg.telegramMessageId = data.result.message_id;
                 newMsg.status = 'sent';
-                if (data.result.voice) {
+                if (data.result.voice && data.result.voice.file_id) {
                     newMsg.stickerFileId = data.result.voice.file_id;
+                } else if (data.result.audio && data.result.audio.file_id) {
+                    newMsg.stickerFileId = data.result.audio.file_id;
                 }
                 saveChatMessage(newMsg);
+                renderSecretChat();
             } else {
                 newMsg.status = 'pending';
                 saveChatMessage(newMsg);
+                renderSecretChat();
                 queueForOutbox({ id: newMsg.id, action: 'sendVoice', payload: voicePayload, type: 'voice' });
                 showLoveToast("⏳ Voice note saved to Outbox! Auto-sending once connected.", "📡");
             }
@@ -1323,6 +1355,7 @@ function sendSecretVoice(audioBlob) {
         .catch(error => {
             newMsg.status = 'pending';
             saveChatMessage(newMsg);
+            renderSecretChat();
             queueForOutbox({ id: newMsg.id, action: 'sendVoice', payload: voicePayload, type: 'voice' });
         });
     };
@@ -2434,10 +2467,13 @@ async function flushOfflineOutbox() {
                     chatMsg.telegramMessageId = res.result.message_id;
                     if (res.result.voice && res.result.voice.file_id) {
                         chatMsg.stickerFileId = res.result.voice.file_id;
+                    } else if (res.result.audio && res.result.audio.file_id) {
+                        chatMsg.stickerFileId = res.result.audio.file_id;
                     } else if (res.result.photo && res.result.photo.length > 0) {
                         chatMsg.stickerFileId = res.result.photo[res.result.photo.length - 1].file_id;
                     }
                     saveChatMessage(chatMsg);
+                    renderSecretChat();
                 }
                 removeFromOutbox(item.id);
                 sentCount++;

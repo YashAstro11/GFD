@@ -215,23 +215,46 @@ module.exports = async (req, res) => {
             }
 
             const matches = voice.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-            const mimeType = matches ? matches[1] : 'audio/webm;codecs=opus';
+            const mimeType = (matches ? matches[1] : 'audio/webm').toLowerCase();
             const base64Data = matches ? matches[2] : voice;
             const buffer = Buffer.from(base64Data, 'base64');
-            const blob = new Blob([buffer], { type: mimeType });
 
             const formData = new FormData();
             formData.append('chat_id', CHAT_ID);
-            formData.append('voice', blob, 'voice.oga');
             if (caption) formData.append('caption', caption);
             if (reply_to_message_id) formData.append('reply_to_message_id', parseInt(reply_to_message_id));
 
-            const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendVoice`, {
-                method: 'POST',
-                body: formData
-            });
-            const data = await response.json();
-            return res.status(200).json(data);
+            if (mimeType.includes('mp4') || mimeType.includes('m4a') || mimeType.includes('aac')) {
+                const blob = new Blob([buffer], { type: 'audio/m4a' });
+                formData.append('voice', blob, 'voice.m4a');
+                const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendVoice`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                return res.status(200).json(data);
+            } else if (mimeType.includes('ogg') || mimeType.includes('opus')) {
+                const blob = new Blob([buffer], { type: 'audio/ogg' });
+                formData.append('voice', blob, 'voice.oga');
+                const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendVoice`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                return res.status(200).json(data);
+            } else {
+                // WebM container audio: Telegram's sendAudio natively decodes and plays WebM in app
+                const blob = new Blob([buffer], { type: 'audio/webm' });
+                formData.append('audio', blob, 'voice.webm');
+                formData.append('title', 'Voice Note 🎤');
+                formData.append('performer', caption || 'Mukku');
+                const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendAudio`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                return res.status(200).json(data);
+            }
         }
 
         // 8. Send Animation / GIF

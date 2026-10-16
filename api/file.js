@@ -51,10 +51,23 @@ module.exports = async (req, res) => {
             return res.status(fileRes.status).json({ ok: false, error: "Failed to download file from Telegram" });
         }
 
-        const contentType = fileRes.headers.get('content-type') || 'application/octet-stream';
+        let contentType = fileRes.headers.get('content-type') || 'application/octet-stream';
+        const filePath = (info.result.file_path || '').toLowerCase();
+        if (contentType === 'application/octet-stream' || !contentType.startsWith('audio/')) {
+            if (filePath.endsWith('.oga') || filePath.endsWith('.ogg')) {
+                contentType = 'audio/ogg';
+            } else if (filePath.endsWith('.m4a') || filePath.endsWith('.mp4')) {
+                contentType = 'audio/mp4';
+            } else if (filePath.endsWith('.mp3')) {
+                contentType = 'audio/mpeg';
+            } else if (filePath.endsWith('.webm')) {
+                contentType = 'audio/webm';
+            }
+        }
         const arrayBuffer = await fileRes.arrayBuffer();
 
         res.setHeader('Content-Type', contentType);
+        res.setHeader('Accept-Ranges', 'bytes');
         res.setHeader('Cache-Control', 'private, max-age=86400');
         return res.status(200).send(Buffer.from(arrayBuffer));
     } catch (err) {

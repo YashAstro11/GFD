@@ -38,9 +38,11 @@ const MIME_TYPES = {
     '.svg': 'image/svg+xml',
     '.ico': 'image/x-icon',
     '.mp3': 'audio/mpeg',
+    '.m4a': 'audio/mp4',
     '.ogg': 'audio/ogg',
+    '.oga': 'audio/ogg',
     '.wav': 'audio/wav',
-    '.webm': 'video/webm'
+    '.webm': 'audio/webm'
 };
 
 // 3. Serverless Route Handlers
