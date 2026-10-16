@@ -1223,9 +1223,8 @@ function sendSecretUpdate(message) {
     });
 }
 
-// === VOICE RECORDING LOGIC ===
-let mediaRecorder = null;
-let audioChunks = [];
+// === VOICE RECORDING LOGIC (Direct MP3 Encoding with lamejs) ===
+let audioRecorderState = null;
 let isRecording = false;
 
 function setupVoiceRecording() {
@@ -1234,61 +1233,150 @@ function setupVoiceRecording() {
     if (!recordBtn) return;
 
     recordBtn.addEventListener("click", async () => {
-        if (isRecording && mediaRecorder) {
-            mediaRecorder.stop();
-            isRecording = false;
-            recordIcon.textContent = "🎤";
-            recordBtn.classList.remove("recording-active");
+        if (isRecording && audioRecorderState) {
+            stopVoiceRecording();
             return;
         }
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            
-            // Auto-detect optimal recording format for client & Telegram compatibility:
-            // 1. audio/mp4 (Native Telegram voice note support & 100% iOS/Chrome compatibility)
-            // 2. audio/webm;codecs=opus (Chromium standard)
-            // 3. audio/ogg;codecs=opus (Firefox standard)
-            let selectedMimeType = '';
-            const candidates = [
-                'audio/mp4',
-                'audio/mp4;codecs=aac',
-                'audio/webm;codecs=opus',
-                'audio/webm',
-                'audio/ogg;codecs=opus',
-                'audio/ogg'
-            ];
-            for (const candidate of candidates) {
-                if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(candidate)) {
-                    selectedMimeType = candidate;
-                    break;
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+
+            if (typeof lamejs !== 'undefined' && AudioCtx) {
+                // High-fidelity direct MP3 recording (100% playable on Telegram & all browsers)
+                const audioCtx = new AudioCtx();
+                const source = audioCtx.createMediaStreamSource(stream);
+                const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+                const pcmChunks = [];
+                let totalSamples = 0;
+
+                processor.onaudioprocess = e => {
+                    const channelData = e.inputBuffer.getChannelData(0);
+                    pcmChunks.push(new Float32Array(channelData));
+                    totalSamples += channelData.length;
+                };
+
+                source.connect(processor);
+                processor.connect(audioCtx.destination);
+
+                audioRecorderState = {
+                    type: 'lamejs',
+                    audioCtx,
+                    stream,
+                    source,
+                    processor,
+                    pcmChunks,
+                    getTotalSamples: () => totalSamples,
+                    sampleRate: audioCtx.sampleRate || 44100
+                };
+            } else {
+                // Fallback to MediaRecorder
+                let selectedMimeType = '';
+                const candidates = [
+                    'audio/mp4',
+                    'audio/mp4;codecs=aac',
+                    'audio/webm;codecs=opus',
+                    'audio/webm',
+                    'audio/ogg;codecs=opus',
+                    'audio/ogg'
+                ];
+                for (const candidate of candidates) {
+                    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(candidate)) {
+                        selectedMimeType = candidate;
+                        break;
+                    }
                 }
+
+                const mediaRecorder = selectedMimeType ? new MediaRecorder(stream, { mimeType: selectedMimeType }) : new MediaRecorder(stream);
+                const audioChunks = [];
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) audioChunks.push(e.data);
+                };
+
+                mediaRecorder.start();
+                audioRecorderState = {
+                    type: 'mediaRecorder',
+                    stream,
+                    mediaRecorder,
+                    audioChunks,
+                    mimeType: (mediaRecorder && mediaRecorder.mimeType) || selectedMimeType || 'audio/webm'
+                };
             }
 
-            mediaRecorder = selectedMimeType ? new MediaRecorder(stream, { mimeType: selectedMimeType }) : new MediaRecorder(stream);
-            audioChunks = [];
-
-            mediaRecorder.ondataavailable = e => {
-                if (e.data.size > 0) audioChunks.push(e.data);
-            };
-
-            mediaRecorder.onstop = () => {
-                const actualMime = (mediaRecorder && mediaRecorder.mimeType) || selectedMimeType || 'audio/webm';
-                const audioBlob = new Blob(audioChunks, { type: actualMime });
-                if (audioBlob.size === 0) return;
-                sendSecretVoice(audioBlob);
-                stream.getTracks().forEach(track => track.stop());
-            };
-
-            mediaRecorder.start();
             isRecording = true;
-            recordIcon.textContent = "🛑";
+            if (recordIcon) recordIcon.textContent = "🛑";
             recordBtn.classList.add("recording-active");
         } catch (err) {
             console.error("Error accessing microphone:", err);
             alert("Microphone access is required to send voice notes.");
         }
     });
+}
+
+function stopVoiceRecording() {
+    const recordBtn = document.getElementById("chat-record-btn");
+    const recordIcon = document.getElementById("record-btn-icon");
+    if (!audioRecorderState) return;
+
+    const state = audioRecorderState;
+    audioRecorderState = null;
+    isRecording = false;
+    if (recordIcon) recordIcon.textContent = "🎤";
+    if (recordBtn) recordBtn.classList.remove("recording-active");
+
+    if (state.type === 'lamejs') {
+        try {
+            state.processor.disconnect();
+            state.source.disconnect();
+            state.stream.getTracks().forEach(t => t.stop());
+            if (state.audioCtx.state !== 'closed') {
+                state.audioCtx.close().catch(() => {});
+            }
+        } catch (e) {}
+
+        const totalLength = state.getTotalSamples();
+        if (totalLength === 0) return;
+
+        // Flatten raw Float32 audio chunks
+        const samples = new Float32Array(totalLength);
+        let offset = 0;
+        for (const chunk of state.pcmChunks) {
+            samples.set(chunk, offset);
+            offset += chunk.length;
+        }
+
+        // Convert Float32 (-1 to 1) to Int16 PCM (-32768 to 32767)
+        const pcmInt16 = new Int16Array(totalLength);
+        for (let i = 0; i < totalLength; i++) {
+            const s = Math.max(-1, Math.min(1, samples[i]));
+            pcmInt16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+
+        // Encode to MP3 via lamejs
+        const sampleRate = state.sampleRate || 44100;
+        const mp3Encoder = new lamejs.Mp3Encoder(1, sampleRate, 128);
+        const mp3Buffers = [];
+        const maxSamples = 1152;
+        for (let i = 0; i < pcmInt16.length; i += maxSamples) {
+            const chunk = pcmInt16.subarray(i, i + maxSamples);
+            const mp3buf = mp3Encoder.encodeBuffer(chunk);
+            if (mp3buf && mp3buf.length > 0) mp3Buffers.push(mp3buf);
+        }
+        const flushBuf = mp3Encoder.flush();
+        if (flushBuf && flushBuf.length > 0) mp3Buffers.push(flushBuf);
+
+        const mp3Blob = new Blob(mp3Buffers, { type: 'audio/mp3' });
+        if (mp3Blob.size === 0) return;
+        sendSecretVoice(mp3Blob);
+    } else {
+        state.mediaRecorder.onstop = () => {
+            const blob = new Blob(state.audioChunks, { type: state.mimeType });
+            if (blob.size === 0) return;
+            sendSecretVoice(blob);
+            state.stream.getTracks().forEach(track => track.stop());
+        };
+        state.mediaRecorder.stop();
+    }
 }
 
 function sendSecretVoice(audioBlob) {

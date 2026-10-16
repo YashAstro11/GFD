@@ -230,7 +230,16 @@ module.exports = async (req, res) => {
             if (caption) formData.append('caption', caption);
             if (reply_to_message_id) formData.append('reply_to_message_id', parseInt(reply_to_message_id));
 
-            if (mimeType.includes('mp4') || mimeType.includes('m4a') || mimeType.includes('aac')) {
+            if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
+                const blob = new Blob([buffer], { type: 'audio/mpeg' });
+                formData.append('voice', blob, 'voice.mp3');
+                const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendVoice`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                return res.status(200).json(data);
+            } else if (mimeType.includes('mp4') || mimeType.includes('m4a') || mimeType.includes('aac')) {
                 const blob = new Blob([buffer], { type: 'audio/m4a' });
                 formData.append('voice', blob, 'voice.m4a');
                 const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendVoice`, {
@@ -239,7 +248,7 @@ module.exports = async (req, res) => {
                 });
                 const data = await response.json();
                 return res.status(200).json(data);
-            } else if (mimeType.includes('ogg') || mimeType.includes('opus')) {
+            } else if (mimeType.includes('ogg') || (!mimeType.includes('webm') && mimeType.includes('opus'))) {
                 const blob = new Blob([buffer], { type: 'audio/ogg' });
                 formData.append('voice', blob, 'voice.oga');
                 const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendVoice`, {
