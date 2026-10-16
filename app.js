@@ -1997,9 +1997,9 @@ function checkTelegramReplies() {
                                 };
                                 history.push(newMsg);
                                 newPartnerMessages++;
-                            } else if (msg.voice || msg.audio) {
+                            } else if (msg.voice || msg.audio || (msg.document && msg.document.mime_type && msg.document.mime_type.startsWith('audio/'))) {
                                 // 4. Yash sent a Voice Note or Audio
-                                const audio = msg.voice || msg.audio;
+                                const audio = msg.voice || msg.audio || msg.document;
                                 const newMsg = {
                                     id: newMsgId,
                                     telegramMessageId: msg.message_id,

@@ -214,9 +214,15 @@ module.exports = async (req, res) => {
                 return res.status(400).json({ ok: false, error: "Voice data required" });
             }
 
-            const matches = voice.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-            const mimeType = (matches ? matches[1] : 'audio/webm').toLowerCase();
-            const base64Data = matches ? matches[2] : voice;
+            let mimeType = 'audio/webm';
+            let base64Data = voice;
+            const commaIdx = voice.indexOf(',');
+            if (voice.startsWith('data:') && commaIdx !== -1) {
+                const header = voice.substring(5, commaIdx);
+                base64Data = voice.substring(commaIdx + 1);
+                const mimeMatch = header.match(/^([^;]+)/);
+                if (mimeMatch) mimeType = mimeMatch[1].toLowerCase();
+            }
             const buffer = Buffer.from(base64Data, 'base64');
 
             const formData = new FormData();
