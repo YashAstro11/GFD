@@ -1,6 +1,8 @@
 // Vercel Serverless Function: /api/telegram
 // Secured with HMAC session token validation to prevent unauthorized access.
 
+const fs = require('fs');
+const path = require('path');
 const { verifyToken, extractToken } = require('./_auth');
 
 // Simple rate limiter for visit pings
@@ -272,9 +274,40 @@ module.exports = async (req, res) => {
             }
         }
 
-        // 8. Send Animation / GIF
+        // 8. Send Animation / GIF (Supports local stickers via FormData or direct URLs)
         if (action === 'sendAnimation') {
-            const { animation, caption, reply_to_message_id } = req.body || {};
+            let { animation, caption, reply_to_message_id } = req.body || {};
+            if (!animation) {
+                return res.status(400).json({ ok: false, error: "Animation required" });
+            }
+
+            // If it's a local sticker path, send file directly via multipart/form-data
+            if (typeof animation === 'string' && (animation.startsWith('/stickers/') || animation.startsWith('stickers/'))) {
+                const cleanRel = animation.startsWith('/') ? animation.slice(1) : animation;
+                const localFilePath = path.join(__dirname, '..', cleanRel);
+                if (fs.existsSync(localFilePath)) {
+                    try {
+                        const fileBuffer = fs.readFileSync(localFilePath);
+                        const blob = new Blob([fileBuffer], { type: 'image/gif' });
+                        const formData = new FormData();
+                        formData.append('chat_id', CHAT_ID);
+                        formData.append('animation', blob, path.basename(localFilePath));
+                        if (caption) formData.append('caption', caption);
+                        if (reply_to_message_id) formData.append('reply_to_message_id', parseInt(reply_to_message_id));
+
+                        const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendAnimation`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await response.json();
+                        return res.status(200).json(data);
+                    } catch (formErr) {
+                        console.warn("Direct sticker upload fallback:", formErr.message);
+                    }
+                }
+            }
+
+            // Otherwise send via URL payload
             const payload = {
                 chat_id: CHAT_ID,
                 animation: animation,

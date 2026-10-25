@@ -1,5 +1,5 @@
-// StudyFlow / Love Space Offline Service Worker (v2.5)
-const CACHE_NAME = 'studyflow-cache-v2.5';
+// StudyFlow / Love Space Offline Service Worker (v2.6)
+const CACHE_NAME = 'studyflow-cache-v2.6';
 const PRECACHE_ASSETS = [
     '/',
     '/index.html',
@@ -7,7 +7,25 @@ const PRECACHE_ASSETS = [
     '/app.js',
     '/peerjs.min.js',
     '/lame.min.js',
-    '/manifest.json'
+    '/manifest.json',
+    '/stickers/cats/cat_mochi_hug.gif',
+    '/stickers/cats/cat_love_hearts.gif',
+    '/stickers/cats/cat_cuddle.gif',
+    '/stickers/cats/cat_heart_eyes.gif',
+    '/stickers/cats/cat_peck_kiss.gif',
+    '/stickers/cats/cat_cheek_kiss.gif',
+    '/stickers/cats/cat_cute_roll.gif',
+    '/stickers/cats/cat_happy_dance.gif',
+    '/stickers/love/love_blowing_kiss.gif',
+    '/stickers/love/love_you_forever.gif',
+    '/stickers/love/love_warm_cuddle.gif',
+    '/stickers/love/love_heart_pop.gif',
+    '/stickers/love/love_sparkle.gif',
+    '/stickers/love/love_couple_blanket.gif',
+    '/stickers/bears/bear_hug.gif',
+    '/stickers/bears/bear_pouty.gif',
+    '/stickers/bears/bear_cuddle.gif',
+    '/stickers/bears/bear_dance.gif'
 ];
 
 // Install: Cache critical assets individually so failure of one does not break the rest
@@ -51,12 +69,17 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // 2. Only intercept GET requests
+    // 2. Only intercept same-origin requests! Let external third-party requests pass through naturally to avoid ERR_FAILED
+    if (url.origin !== self.location.origin) {
+        return;
+    }
+
+    // 3. Only intercept GET requests
     if (req.method !== 'GET') {
         return;
     }
 
-    // 3. Navigation Requests (Address bar typing: gfd-eta.vercel.app, reloads, page navigation)
+    // 4. Navigation Requests (Address bar typing: gfd-eta.vercel.app, reloads, page navigation)
     if (req.mode === 'navigate' || req.destination === 'document') {
         event.respondWith(
             fetch(req)
@@ -87,7 +110,7 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // 4. Static Assets (CSS, JS, Fonts, Icons)
+    // 5. Static Assets (CSS, JS, Fonts, Local Stickers, Icons)
     // Stale-While-Revalidate: Return cached version immediately (works 100% offline), update in background if online
     event.respondWith(
         caches.match(req, { ignoreSearch: true }).then((cachedRes) => {
@@ -109,8 +132,10 @@ self.addEventListener('fetch', (event) => {
                 }
                 return networkRes;
             }).catch(async () => {
-                // Offline fallback for script/style
-                return caches.match(req, { ignoreSearch: true });
+                // Offline fallback for script/style/stickers
+                const fallback = await caches.match(req, { ignoreSearch: true });
+                if (fallback) return fallback;
+                return new Response('', { status: 408, statusText: 'Request timed out or offline' });
             });
         })
     );

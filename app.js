@@ -884,28 +884,28 @@ const unreadDot = document.getElementById("unread-dot");
 // Curated Sticker Catalog
 const STICKER_CATALOG = {
     cats: [
-        { name: "Mochi Hug", url: "https://media.giphy.com/media/MDJ9IbxxvDUQM/giphy.gif", emoji: "😻", isAnim: true },
-        { name: "Love Hearts", url: "https://media.giphy.com/media/vFKqnCdLPNOKc/giphy.gif", emoji: "🐱", isAnim: true },
-        { name: "Cat Cuddle", url: "https://media.giphy.com/media/l4pTdcifPZLpDjL1e/giphy.gif", emoji: "🐾", isAnim: true },
-        { name: "Cat Heart Eyes", url: "https://media.giphy.com/media/BzyTuYCmvSORqs1ABM/giphy.gif", emoji: "😻", isAnim: true },
-        { name: "Cute Peck Kiss", url: "https://media.giphy.com/media/G3va31oEEnIkM/giphy.gif", emoji: "😽", isAnim: true },
-        { name: "Cheek Kiss", url: "https://media.giphy.com/media/3oT0Fsr4bB1wK4m63e/giphy.gif", emoji: "😘", isAnim: true },
-        { name: "Cute Roll", url: "https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif", emoji: "😺", isAnim: true },
-        { name: "Happy Dance", url: "https://media.giphy.com/media/g5qEgeTM20WPm/giphy.gif", emoji: "💃", isAnim: true }
+        { name: "Mochi Hug", url: "/stickers/cats/cat_mochi_hug.gif", fallbackUrl: "https://i.giphy.com/MDJ9IbxxvDUQM.gif", emoji: "😻", isAnim: true },
+        { name: "Love Hearts", url: "/stickers/cats/cat_love_hearts.gif", fallbackUrl: "https://i.giphy.com/vFKqnCdLPNOKc.gif", emoji: "🐱", isAnim: true },
+        { name: "Cat Cuddle", url: "/stickers/cats/cat_cuddle.gif", fallbackUrl: "https://i.giphy.com/l4pTdcifPZLpDjL1e.gif", emoji: "🐾", isAnim: true },
+        { name: "Cat Heart Eyes", url: "/stickers/cats/cat_heart_eyes.gif", fallbackUrl: "https://i.giphy.com/BzyTuYCmvSORqs1ABM.gif", emoji: "😻", isAnim: true },
+        { name: "Cute Peck Kiss", url: "/stickers/cats/cat_peck_kiss.gif", fallbackUrl: "https://i.giphy.com/G3va31oEEnIkM.gif", emoji: "😽", isAnim: true },
+        { name: "Cheek Kiss", url: "/stickers/cats/cat_cheek_kiss.gif", fallbackUrl: "https://i.giphy.com/3oT0Fsr4bB1wK4m63e.gif", emoji: "😘", isAnim: true },
+        { name: "Cute Roll", url: "/stickers/cats/cat_cute_roll.gif", fallbackUrl: "https://i.giphy.com/JIX9t2j0ZTN9S.gif", emoji: "😺", isAnim: true },
+        { name: "Happy Dance", url: "/stickers/cats/cat_happy_dance.gif", fallbackUrl: "https://i.giphy.com/g5qEgeTM20WPm.gif", emoji: "💃", isAnim: true }
     ],
     love: [
-        { name: "Blowing Kiss", url: "https://media.giphy.com/media/11sBLVxNs7v6WA/giphy.gif", emoji: "💋", isAnim: true },
-        { name: "Love You Forever", url: "https://media.giphy.com/media/R6gVNROjBy4UM/giphy.gif", emoji: "💖", isAnim: true },
-        { name: "Warm Cuddle", url: "https://media.giphy.com/media/l2Je2M4Nfrit0L7sQ/giphy.gif", emoji: "🫂", isAnim: true },
-        { name: "Heart Pop", url: "https://media.giphy.com/media/26FLdmIp6wJr91JAI/giphy.gif", emoji: "💓", isAnim: true },
-        { name: "Sparkle Love", url: "https://media.giphy.com/media/l41JWw65TcBGjPpRK/giphy.gif", emoji: "✨", isAnim: true },
-        { name: "Couple Blanket", url: "https://media.giphy.com/media/26xBI73gWquCBBCDe/giphy.gif", emoji: "🥰", isAnim: true }
+        { name: "Blowing Kiss", url: "/stickers/love/love_blowing_kiss.gif", fallbackUrl: "https://i.giphy.com/11sBLVxNs7v6WA.gif", emoji: "💋", isAnim: true },
+        { name: "Love You Forever", url: "/stickers/love/love_you_forever.gif", fallbackUrl: "https://i.giphy.com/sNFFScb9RPaYKainsp.gif", emoji: "💖", isAnim: true },
+        { name: "Warm Cuddle", url: "/stickers/love/love_warm_cuddle.gif", fallbackUrl: "https://i.giphy.com/l2Je2M4Nfrit0L7sQ.gif", emoji: "🫂", isAnim: true },
+        { name: "Heart Pop", url: "/stickers/love/love_heart_pop.gif", fallbackUrl: "https://i.giphy.com/26FLdmIp6wJr91JAI.gif", emoji: "💓", isAnim: true },
+        { name: "Sparkle Love", url: "/stickers/love/love_sparkle.gif", fallbackUrl: "https://i.giphy.com/l41JWw65TcBGjPpRK.gif", emoji: "✨", isAnim: true },
+        { name: "Couple Blanket", url: "/stickers/love/love_couple_blanket.gif", fallbackUrl: "https://i.giphy.com/26xBI73gWquCBBCDe.gif", emoji: "🥰", isAnim: true }
     ],
     bears: [
-        { name: "Bear Hug", url: "https://media.giphy.com/media/3oriO0OEd9QIDdllqo/giphy.gif", emoji: "🧸", isAnim: true },
-        { name: "Pouty Love", url: "https://media.giphy.com/media/3oEjI4sFlIE732SHEY/giphy.gif", emoji: "🥺", isAnim: true },
-        { name: "Warm Cuddle", url: "https://media.giphy.com/media/l2Je2M4Nfrit0L7sQ/giphy.gif", emoji: "🐻", isAnim: true },
-        { name: "Happy Dance", url: "https://media.giphy.com/media/g5qEgeTM20WPm/giphy.gif", emoji: "✨", isAnim: true }
+        { name: "Bear Hug", url: "/stickers/bears/bear_hug.gif", fallbackUrl: "https://i.giphy.com/IzXiddo2twMmdmU8Lv.gif", emoji: "🧸", isAnim: true },
+        { name: "Pouty Love", url: "/stickers/bears/bear_pouty.gif", fallbackUrl: "https://i.giphy.com/eKfpB6WZeKC1DiGrj8.gif", emoji: "🥺", isAnim: true },
+        { name: "Warm Cuddle", url: "/stickers/bears/bear_cuddle.gif", fallbackUrl: "https://i.giphy.com/SYo1DFS8NLhhqzzjMU.gif", emoji: "🐻", isAnim: true },
+        { name: "Happy Dance", url: "/stickers/bears/bear_dance.gif", fallbackUrl: "https://i.giphy.com/FPkmZEonYkd2GoanJ4.gif", emoji: "✨", isAnim: true }
     ],
     emojis: [
         { name: "Love Cat", emoji: "😻", isEmoji: true },
@@ -1864,9 +1864,9 @@ function initStickerPicker() {
                         btn.type = "button";
                         btn.title = gif.title || "GIF";
                         
-                        const thumbUrl = gif.images.fixed_height_small.url;
-                        const fullUrl = gif.images.fixed_height.url;
-                        btn.innerHTML = `<img src="${thumbUrl}" alt="${gif.title || 'GIF'}" class="sticker-thumb" loading="lazy">`;
+                        const thumbUrl = (gif.images && gif.images.fixed_height_small && gif.images.fixed_height_small.url) || gif.images.fixed_height.url;
+                        const fullUrl = (gif.images && gif.images.fixed_height && gif.images.fixed_height.url) || thumbUrl;
+                        btn.innerHTML = `<img src="${thumbUrl}" alt="${gif.title || 'GIF'}" class="sticker-thumb" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='${fullUrl}';">`;
 
                         btn.addEventListener("click", () => {
                             sendSecretSticker({
@@ -1909,7 +1909,22 @@ function initStickerPicker() {
             if (stk.isEmoji) {
                 btn.innerHTML = `<span class="sticker-emoji-large">${stk.emoji}</span>`;
             } else {
-                btn.innerHTML = `<img src="${stk.url}" alt="${stk.name}" class="sticker-thumb" loading="lazy">`;
+                const img = document.createElement("img");
+                img.src = stk.url;
+                img.alt = stk.name;
+                img.className = "sticker-thumb";
+                img.loading = "lazy";
+                img.setAttribute("referrerpolicy", "no-referrer");
+
+                img.onerror = () => {
+                    if (stk.fallbackUrl && img.src !== stk.fallbackUrl) {
+                        img.src = stk.fallbackUrl;
+                    } else {
+                        btn.innerHTML = `<span class="sticker-emoji-large">${stk.emoji || '💖'}</span>`;
+                    }
+                };
+
+                btn.appendChild(img);
             }
 
             btn.addEventListener("click", () => {

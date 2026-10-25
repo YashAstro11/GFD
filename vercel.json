@@ -2,6 +2,9 @@
   "functions": {
     "api/photo.js": {
       "includeFiles": "api/photos/**"
+    },
+    "api/telegram.js": {
+      "includeFiles": "stickers/**"
     }
   },
   "headers": [
