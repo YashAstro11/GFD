@@ -1,5 +1,5 @@
-// StudyFlow / Love Space Offline Service Worker (v2.3)
-const CACHE_NAME = 'studyflow-cache-v2.3';
+// StudyFlow / Love Space Offline Service Worker (v2.5)
+const CACHE_NAME = 'studyflow-cache-v2.5';
 const PRECACHE_ASSETS = [
     '/',
     '/index.html',

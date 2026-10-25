@@ -3478,44 +3478,67 @@ const WEBRTC_ICE_SERVERS = [
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:global.stun.twilio.com:3478' }
+    { urls: 'stun:global.stun.twilio.com:3478' },
+    { urls: 'stun:stun.services.mozilla.com' },
+    { urls: 'stun:stun.stunprotocol.org:3478' }
 ];
+
+function getIceServersConfig() {
+    const servers = [...WEBRTC_ICE_SERVERS];
+    if (CONFIG.turnServer && typeof CONFIG.turnServer === 'object' && CONFIG.turnServer.urls) {
+        servers.unshift(CONFIG.turnServer);
+    }
+    return servers;
+}
 
 async function getMediaStreamWithFallback(isVideo) {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Your browser does not support audio/video calling. Please use Chrome or Safari over HTTPS.");
     }
-    const audioConstraints = {
+    const tryGetUserMedia = async (audioOpts, videoOpts) => {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: audioOpts, video: videoOpts });
+        // Guarantee tracks are explicitly active
+        stream.getAudioTracks().forEach(t => { t.enabled = true; });
+        stream.getVideoTracks().forEach(t => { t.enabled = true; });
+        return stream;
+    };
+
+    const audioAdvanced = {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true
     };
+
     if (isVideo) {
+        // Attempt 1: Optimal 720p front camera + advanced audio
         try {
-            return await navigator.mediaDevices.getUserMedia({
-                audio: audioConstraints,
-                video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
-            });
+            return await tryGetUserMedia(audioAdvanced, { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } });
         } catch (e1) {
-            console.warn("HD video constraints failed, trying basic video:", e1);
-            try {
-                return await navigator.mediaDevices.getUserMedia({
-                    audio: audioConstraints,
-                    video: { facingMode: 'user' }
-                });
-            } catch (e2) {
-                console.warn("Front facing video failed, trying standard video:", e2);
-                return await navigator.mediaDevices.getUserMedia({
-                    audio: audioConstraints,
-                    video: true
-                });
-            }
+            console.warn("HD video attempt 1 failed, trying basic video:", e1);
         }
+
+        // Attempt 2: Basic front camera + advanced audio
+        try {
+            return await tryGetUserMedia(audioAdvanced, { facingMode: 'user' });
+        } catch (e2) {
+            console.warn("Front cam attempt 2 failed, trying standard video:", e2);
+        }
+
+        // Attempt 3: Standard camera + basic audio
+        try {
+            return await tryGetUserMedia(true, true);
+        } catch (e3) {
+            console.warn("Standard audio/video attempt 3 failed:", e3);
+        }
+
+        // Attempt 4: Audio only if camera is blocked/busy on device
+        return await tryGetUserMedia(true, false);
     } else {
-        return await navigator.mediaDevices.getUserMedia({
-            audio: audioConstraints,
-            video: false
-        });
+        try {
+            return await tryGetUserMedia(audioAdvanced, false);
+        } catch (e) {
+            return await tryGetUserMedia(true, false);
+        }
     }
 }
 
@@ -3579,7 +3602,7 @@ async function startSecretCall(type = 'audio') {
         peer = new Peer(callRoomId, {
             debug: 1,
             config: {
-                iceServers: WEBRTC_ICE_SERVERS,
+                iceServers: getIceServersConfig(),
                 iceCandidatePoolSize: 10
             }
         });
@@ -3749,7 +3772,7 @@ async function answerIncomingSecretCall(callerPeerId, type = 'audio') {
         peer = new Peer(myPeerId, {
             debug: 1,
             config: {
-                iceServers: WEBRTC_ICE_SERVERS,
+                iceServers: getIceServersConfig(),
                 iceCandidatePoolSize: 10
             }
         });
@@ -3826,64 +3849,116 @@ function handleRemoteStream(remoteStream) {
 
     const statusLabel = document.getElementById("call-status-label");
     const timerDisplay = document.getElementById("call-timer-display");
+    const timerHeader = document.getElementById("call-timer-header");
     const remoteVideo = document.getElementById("call-remote-video");
     const avatarView = document.getElementById("call-audio-avatar-view");
 
     if (statusLabel) statusLabel.textContent = "Connected 💕";
 
-    if (activeCallSession.isVideo && remoteVideo) {
-        remoteVideo.srcObject = remoteStream;
-        remoteVideo.muted = false;
-        remoteVideo.setAttribute('playsinline', 'true');
-        remoteVideo.setAttribute('webkit-playsinline', 'true');
-        remoteVideo.classList.remove("hide");
-        if (avatarView) avatarView.classList.add("hide");
+    // 1. Audio Setup via dedicated <audio> element (guarantees audio works on mobile)
+    if (!activeCallSession.remoteAudioEl) {
+        const audioEl = document.createElement("audio");
+        audioEl.id = "webrtc-remote-audio";
+        audioEl.autoplay = true;
+        audioEl.setAttribute('playsinline', 'true');
+        audioEl.setAttribute('webkit-playsinline', 'true');
+        audioEl.srcObject = remoteStream;
+        document.body.appendChild(audioEl);
+        activeCallSession.remoteAudioEl = audioEl;
 
-        remoteVideo.play().catch(err => {
-            console.warn("Remote video play was deferred/blocked:", err);
-            const resumePlay = () => {
-                remoteVideo.play().catch(() => {});
-                document.removeEventListener('click', resumePlay);
-                document.removeEventListener('touchstart', resumePlay);
-            };
-            document.addEventListener('click', resumePlay, { once: true });
-            document.addEventListener('touchstart', resumePlay, { once: true });
-        });
-    } else {
-        // Audio-only call
-        if (!activeCallSession.remoteAudioEl) {
-            const audioEl = document.createElement("audio");
-            audioEl.autoplay = true;
-            audioEl.setAttribute('playsinline', 'true');
-            audioEl.setAttribute('webkit-playsinline', 'true');
-            audioEl.srcObject = remoteStream;
-            document.body.appendChild(audioEl);
-            activeCallSession.remoteAudioEl = audioEl;
-
-            audioEl.play().catch(err => {
-                console.warn("Audio autoplay blocked by browser policy:", err);
-                const resumeAudio = () => {
-                    audioEl.play().catch(() => {});
-                    document.removeEventListener('click', resumeAudio);
-                    document.removeEventListener('touchstart', resumeAudio);
-                };
-                document.addEventListener('click', resumeAudio, { once: true });
-                document.addEventListener('touchstart', resumeAudio, { once: true });
+        const playAudio = () => {
+            audioEl.play().then(() => {
+                const unmuteBtn = document.getElementById("call-unmute-btn");
+                if (unmuteBtn) unmuteBtn.classList.add("hide");
+            }).catch(err => {
+                console.warn("Audio autoplay blocked by mobile browser policy:", err);
+                const unmuteBtn = document.getElementById("call-unmute-btn");
+                if (unmuteBtn) unmuteBtn.classList.remove("hide");
             });
-        }
+        };
+        playAudio();
+
+        // One-tap unlock for any screen touch/click
+        const unlockAudioOnTouch = () => {
+            if (activeCallSession && activeCallSession.remoteAudioEl) {
+                activeCallSession.remoteAudioEl.play().then(() => {
+                    const unmuteBtn = document.getElementById("call-unmute-btn");
+                    if (unmuteBtn) unmuteBtn.classList.add("hide");
+                }).catch(() => {});
+            }
+        };
+        document.addEventListener('click', unlockAudioOnTouch, { once: true });
+        document.addEventListener('touchstart', unlockAudioOnTouch, { once: true });
+    } else {
+        activeCallSession.remoteAudioEl.srcObject = remoteStream;
+        activeCallSession.remoteAudioEl.play().catch(() => {});
     }
 
-    activeCallSession.startTime = Date.now();
+    // 2. Video Track Handling & Rendering
+    const updateVideoTrackVisibility = () => {
+        if (!activeCallSession) return;
+        const vTracks = remoteStream.getVideoTracks();
+        const hasLiveVideo = vTracks.length > 0 && vTracks.some(t => t.readyState === 'live' && t.enabled);
+
+        if (activeCallSession.isVideo && hasLiveVideo && remoteVideo) {
+            remoteVideo.srcObject = remoteStream;
+            remoteVideo.muted = true; // MUST be muted so browser autoplay policy never blocks video frame rendering
+            remoteVideo.setAttribute('playsinline', 'true');
+            remoteVideo.setAttribute('webkit-playsinline', 'true');
+            remoteVideo.classList.remove("hide");
+            if (avatarView) avatarView.classList.add("hide");
+            remoteVideo.play().catch(e => console.warn("Remote video play error:", e));
+        } else {
+            if (remoteVideo) {
+                remoteVideo.classList.add("hide");
+                remoteVideo.srcObject = null;
+            }
+            if (avatarView) avatarView.classList.remove("hide");
+        }
+    };
+
+    updateVideoTrackVisibility();
+
+    remoteStream.onaddtrack = () => {
+        updateVideoTrackVisibility();
+        if (activeCallSession && activeCallSession.remoteAudioEl) {
+            activeCallSession.remoteAudioEl.srcObject = remoteStream;
+            activeCallSession.remoteAudioEl.play().catch(() => {});
+        }
+    };
+
+    remoteStream.getVideoTracks().forEach(track => {
+        track.onunmute = () => updateVideoTrackVisibility();
+        track.onmute = () => updateVideoTrackVisibility();
+    });
+    remoteStream.getAudioTracks().forEach(track => {
+        track.onunmute = () => {
+            if (activeCallSession && activeCallSession.remoteAudioEl) {
+                activeCallSession.remoteAudioEl.play().catch(() => {});
+            }
+        };
+    });
+
+    // 3. Timer Setup (Header badge & Avatar view)
+    if (!activeCallSession.startTime) {
+        activeCallSession.startTime = Date.now();
+    }
     if (timerDisplay) {
         timerDisplay.textContent = "00:00";
         timerDisplay.classList.remove("hide");
+    }
+    if (timerHeader) {
+        timerHeader.textContent = "00:00";
+        timerHeader.classList.remove("hide");
     }
 
     if (activeCallSession.timerInterval) clearInterval(activeCallSession.timerInterval);
     activeCallSession.timerInterval = setInterval(() => {
         if (!activeCallSession || !activeCallSession.startTime) return;
         const elapsedSec = Math.floor((Date.now() - activeCallSession.startTime) / 1000);
-        if (timerDisplay) timerDisplay.textContent = formatDuration(elapsedSec);
+        const formatted = formatDuration(elapsedSec);
+        if (timerDisplay) timerDisplay.textContent = formatted;
+        if (timerHeader) timerHeader.textContent = formatted;
     }, 1000);
 }
 
@@ -3943,6 +4018,11 @@ function endSecretCall(notifyPartner = true) {
     if (micIcon) micIcon.textContent = "🎤";
     if (camIcon) camIcon.textContent = "📹";
 
+    const unmuteBtn = document.getElementById("call-unmute-btn");
+    const timerHeader = document.getElementById("call-timer-header");
+    if (unmuteBtn) unmuteBtn.classList.add("hide");
+    if (timerHeader) timerHeader.classList.add("hide");
+
     if (window.history && window.history.replaceState) {
         const cleanUrl = window.location.pathname;
         window.history.replaceState({}, document.title, cleanUrl);
@@ -3978,6 +4058,17 @@ function setupCallListeners() {
     const camToggleBtn = document.getElementById("call-cam-toggle-btn");
     const camFlipBtn = document.getElementById("call-cam-flip-btn");
     const callPanicBtn = document.getElementById("call-panic-btn");
+    const unmuteBtn = document.getElementById("call-unmute-btn");
+
+    if (unmuteBtn) {
+        unmuteBtn.addEventListener("click", () => {
+            if (activeCallSession && activeCallSession.remoteAudioEl) {
+                activeCallSession.remoteAudioEl.play().then(() => {
+                    unmuteBtn.classList.add("hide");
+                }).catch(() => {});
+            }
+        });
+    }
 
     if (startVoiceBtn) {
         startVoiceBtn.addEventListener("click", () => startSecretCall('audio'));

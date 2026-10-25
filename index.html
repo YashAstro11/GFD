@@ -321,17 +321,23 @@
         <div class="call-modal-container">
             <div class="call-top-bar">
                 <span class="call-encryption-tag">🔒 End-to-End Encrypted P2P</span>
+                <div id="call-timer-header" class="call-timer-badge hide" style="background: rgba(244, 114, 182, 0.25); border: 1px solid rgba(244, 114, 182, 0.5); border-radius: 14px; padding: 2px 12px; font-size: 0.88rem; font-weight: 700; color: #fff; letter-spacing: 0.5px;">00:00</div>
                 <button id="call-panic-btn" class="call-mini-panic-btn" type="button" title="Quick Disguise (Esc)">
                     <span>🔒 Quick Lock</span>
                 </button>
             </div>
 
             <div class="call-viewport-wrapper">
+                <!-- Tap to Unmute Overlay Button if Browser Autoplay Blocks Sound -->
+                <button id="call-unmute-btn" class="hide" type="button" style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: #ec4899; color: white; border: none; border-radius: 24px; padding: 7px 16px; font-size: 0.82rem; font-weight: 600; box-shadow: 0 4px 15px rgba(236,72,153,0.5); z-index: 30; cursor: pointer;">
+                    <span>🔊 Tap to Enable Audio</span>
+                </button>
+
                 <!-- Video Remote (Full view when video is active) -->
-                <video id="call-remote-video" autoplay playsinline class="call-video-remote hide"></video>
+                <video id="call-remote-video" autoplay playsinline webkit-playsinline class="call-video-remote hide"></video>
                 
                 <!-- Video Local (Picture-in-picture) -->
-                <video id="call-local-video" autoplay playsinline muted class="call-video-local hide"></video>
+                <video id="call-local-video" autoplay playsinline webkit-playsinline muted class="call-video-local hide"></video>
 
                 <!-- Audio-Only Romantic Visualizer View -->
                 <div id="call-audio-avatar-view" class="call-avatar-view">
@@ -407,6 +413,6 @@
     <!-- LameJS MP3 Audio Encoder -->
     <script src="lame.min.js"></script>
     <!-- Main JavaScript Logic -->
-    <script src="app.js?v=4.4"></script>
+    <script src="app.js?v=4.6"></script>
 </body>
 </html>
