@@ -3469,6 +3469,56 @@ function formatDuration(totalSeconds) {
     return `${mins}:${secs}`;
 }
 
+// =========================================================================
+// WEBRTC ICE SERVERS CONFIGURATION (STUN POOL)
+// =========================================================================
+const WEBRTC_ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
+];
+
+async function getMediaStreamWithFallback(isVideo) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Your browser does not support audio/video calling. Please use Chrome or Safari over HTTPS.");
+    }
+    const audioConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+    };
+    if (isVideo) {
+        try {
+            return await navigator.mediaDevices.getUserMedia({
+                audio: audioConstraints,
+                video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+            });
+        } catch (e1) {
+            console.warn("HD video constraints failed, trying basic video:", e1);
+            try {
+                return await navigator.mediaDevices.getUserMedia({
+                    audio: audioConstraints,
+                    video: { facingMode: 'user' }
+                });
+            } catch (e2) {
+                console.warn("Front facing video failed, trying standard video:", e2);
+                return await navigator.mediaDevices.getUserMedia({
+                    audio: audioConstraints,
+                    video: true
+                });
+            }
+        }
+    } else {
+        return await navigator.mediaDevices.getUserMedia({
+            audio: audioConstraints,
+            video: false
+        });
+    }
+}
+
 // Initiate Secret Call (Caller: Mukku or Yash)
 async function startSecretCall(type = 'audio') {
     if (activeCallSession) {
@@ -3503,13 +3553,10 @@ async function startSecretCall(type = 'audio') {
 
     let localStream = null;
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: isVideo ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false
-        });
+        localStream = await getMediaStreamWithFallback(isVideo);
     } catch (err) {
         console.error("Camera/Mic permission failed:", err);
-        alert(`Could not access your ${isVideo ? 'camera or microphone' : 'microphone'}. Please allow permissions in your browser.`);
+        alert(`Could not access your ${isVideo ? 'camera or microphone' : 'microphone'}. Please allow browser permissions in site settings.`);
         if (modal) modal.classList.add("hide");
         return;
     }
@@ -3530,12 +3577,10 @@ async function startSecretCall(type = 'audio') {
 
     try {
         peer = new Peer(callRoomId, {
-            debug: 0,
+            debug: 1,
             config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:global.stun.twilio.com:3478' }
-                ]
+                iceServers: WEBRTC_ICE_SERVERS,
+                iceCandidatePoolSize: 10
             }
         });
     } catch (peerErr) {
@@ -3576,14 +3621,14 @@ async function startSecretCall(type = 'audio') {
 
         let localDevNotice = '';
         if (isLocalStaticEnvironment() && !CONFIG.liveSiteUrl) {
-            localDevNotice = `\n\n⚠️ <i>(Notice: Call laptop localhost/127.0.0.1 par chalu hua hai. Phone 127.0.0.1 nahi khol sakta. Live Vercel website link se call karein ya PC par dusre tab me link paste karke test karein.)</i>`;
+            localDevNotice = `\n\n⚠️ <i>(Notice: Call localhost par chalu hua hai. Phone par test karne ke liye live website link se call karein ya PC par dusre tab me link open karein.)</i>`;
         }
 
         const telegramText = `🚨 <b>Incoming Secret ${callName}!</b> ${callIcon}💕\n\n` +
                              `👤 <b>From:</b> ${CONFIG.partnerName}\n` +
                              `🕒 <b>Time:</b> <code>${timeStr}</code>\n\n` +
                              `👉 <b><a href="${callUrl}">📲 TAP HERE TO ANSWER CALL</a></b>\n\n` +
-                             `<i>(Private end-to-end encrypted call. Zero logs on phone.)</i>` +
+                             `💡 <i>Tip: Agar audio/video start na ho, to link ko <b>Chrome</b> ya <b>Safari</b> me open karein aur Microphone/Camera allow karein.</i>` +
                              localDevNotice;
 
         callTelegramApi('sendMessage', {
@@ -3591,6 +3636,7 @@ async function startSecretCall(type = 'audio') {
             parse_mode: 'HTML'
         }).catch(e => console.error("Call alert send error:", e));
 
+        // 120 seconds timeout (plenty of time to receive notification & answer)
         activeCallSession.timeoutTimer = setTimeout(() => {
             if (activeCallSession && !activeCallSession.startTime) {
                 if (statusLabel) statusLabel.textContent = `${CONFIG.yourName} is unavailable right now 🥺`;
@@ -3599,7 +3645,7 @@ async function startSecretCall(type = 'audio') {
                     endSecretCall(false);
                 }, 3000);
             }
-        }, 60000);
+        }, 120000);
     });
 
     peer.on('call', (incomingCall) => {
@@ -3610,6 +3656,21 @@ async function startSecretCall(type = 'audio') {
 
         activeCallSession.call = incomingCall;
         incomingCall.answer(localStream);
+
+        if (incomingCall.peerConnection) {
+            incomingCall.peerConnection.oniceconnectionstatechange = () => {
+                const state = incomingCall.peerConnection.iceConnectionState;
+                console.log("ICE connection state (caller):", state);
+                if (state === 'connected' || state === 'completed') {
+                    if (statusLabel) statusLabel.textContent = "Connected 💕";
+                } else if (state === 'disconnected') {
+                    if (statusLabel) statusLabel.textContent = "Reconnecting... 🔄";
+                } else if (state === 'failed') {
+                    if (statusLabel) statusLabel.textContent = "Connection lost 💔";
+                    setTimeout(() => endSecretCall(false), 3000);
+                }
+            };
+        }
 
         incomingCall.on('stream', (remoteStream) => {
             handleRemoteStream(remoteStream);
@@ -3627,7 +3688,15 @@ async function startSecretCall(type = 'audio') {
 
     peer.on('error', (err) => {
         console.error("PeerJS error:", err);
-        if (statusLabel) statusLabel.textContent = "Connecting to peer network...";
+        if (statusLabel) {
+            if (err.type === 'peer-unavailable') {
+                statusLabel.textContent = "Call ended or peer is offline.";
+            } else if (err.type === 'network') {
+                statusLabel.textContent = "Network error. Reconnecting...";
+            } else {
+                statusLabel.textContent = "Connecting to peer network...";
+            }
+        }
     });
 }
 
@@ -3657,13 +3726,10 @@ async function answerIncomingSecretCall(callerPeerId, type = 'audio') {
 
     let localStream = null;
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: isVideo ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false
-        });
+        localStream = await getMediaStreamWithFallback(isVideo);
     } catch (err) {
         console.error("Camera/Mic access error:", err);
-        alert(`Could not access your ${isVideo ? 'camera/microphone' : 'microphone'} to answer the call.`);
+        alert(`Could not access your ${isVideo ? 'camera/microphone' : 'microphone'}. Please allow browser permissions in site settings.`);
         if (modal) modal.classList.add("hide");
         return;
     }
@@ -3681,12 +3747,10 @@ async function answerIncomingSecretCall(callerPeerId, type = 'audio') {
     let peer = null;
     try {
         peer = new Peer(myPeerId, {
-            debug: 0,
+            debug: 1,
             config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:global.stun.twilio.com:3478' }
-                ]
+                iceServers: WEBRTC_ICE_SERVERS,
+                iceCandidatePoolSize: 10
             }
         });
     } catch (e) {
@@ -3713,6 +3777,21 @@ async function answerIncomingSecretCall(callerPeerId, type = 'audio') {
         const call = peer.call(callerPeerId, localStream);
         activeCallSession.call = call;
 
+        if (call.peerConnection) {
+            call.peerConnection.oniceconnectionstatechange = () => {
+                const state = call.peerConnection.iceConnectionState;
+                console.log("ICE connection state (callee):", state);
+                if (state === 'connected' || state === 'completed') {
+                    if (statusLabel) statusLabel.textContent = "Connected 💕";
+                } else if (state === 'disconnected') {
+                    if (statusLabel) statusLabel.textContent = "Reconnecting... 🔄";
+                } else if (state === 'failed') {
+                    if (statusLabel) statusLabel.textContent = "Connection lost 💔";
+                    setTimeout(() => endSecretCall(false), 3000);
+                }
+            };
+        }
+
         call.on('stream', (remoteStream) => {
             playCallTone('connected');
             handleRemoteStream(remoteStream);
@@ -3730,7 +3809,14 @@ async function answerIncomingSecretCall(callerPeerId, type = 'audio') {
 
     peer.on('error', (err) => {
         console.error("Callee Peer error:", err);
-        if (statusLabel) statusLabel.textContent = "Connecting to peer network...";
+        if (statusLabel) {
+            if (err.type === 'peer-unavailable') {
+                statusLabel.textContent = "Caller hung up or call expired 🥺";
+                setTimeout(() => endSecretCall(false), 3500);
+            } else {
+                statusLabel.textContent = "Connecting to peer network...";
+            }
+        }
     });
 }
 
@@ -3745,18 +3831,46 @@ function handleRemoteStream(remoteStream) {
 
     if (statusLabel) statusLabel.textContent = "Connected 💕";
 
-    if (!activeCallSession.remoteAudioEl) {
-        const audioEl = document.createElement("audio");
-        audioEl.autoplay = true;
-        audioEl.srcObject = remoteStream;
-        document.body.appendChild(audioEl);
-        activeCallSession.remoteAudioEl = audioEl;
-    }
-
     if (activeCallSession.isVideo && remoteVideo) {
         remoteVideo.srcObject = remoteStream;
+        remoteVideo.muted = false;
+        remoteVideo.setAttribute('playsinline', 'true');
+        remoteVideo.setAttribute('webkit-playsinline', 'true');
         remoteVideo.classList.remove("hide");
         if (avatarView) avatarView.classList.add("hide");
+
+        remoteVideo.play().catch(err => {
+            console.warn("Remote video play was deferred/blocked:", err);
+            const resumePlay = () => {
+                remoteVideo.play().catch(() => {});
+                document.removeEventListener('click', resumePlay);
+                document.removeEventListener('touchstart', resumePlay);
+            };
+            document.addEventListener('click', resumePlay, { once: true });
+            document.addEventListener('touchstart', resumePlay, { once: true });
+        });
+    } else {
+        // Audio-only call
+        if (!activeCallSession.remoteAudioEl) {
+            const audioEl = document.createElement("audio");
+            audioEl.autoplay = true;
+            audioEl.setAttribute('playsinline', 'true');
+            audioEl.setAttribute('webkit-playsinline', 'true');
+            audioEl.srcObject = remoteStream;
+            document.body.appendChild(audioEl);
+            activeCallSession.remoteAudioEl = audioEl;
+
+            audioEl.play().catch(err => {
+                console.warn("Audio autoplay blocked by browser policy:", err);
+                const resumeAudio = () => {
+                    audioEl.play().catch(() => {});
+                    document.removeEventListener('click', resumeAudio);
+                    document.removeEventListener('touchstart', resumeAudio);
+                };
+                document.addEventListener('click', resumeAudio, { once: true });
+                document.addEventListener('touchstart', resumeAudio, { once: true });
+            });
+        }
     }
 
     activeCallSession.startTime = Date.now();
@@ -3812,6 +3926,7 @@ function endSecretCall(notifyPartner = true) {
     }
 
     const modal = document.getElementById("secret-call-modal");
+    const incomingModal = document.getElementById("incoming-call-modal");
     const localVideo = document.getElementById("call-local-video");
     const remoteVideo = document.getElementById("call-remote-video");
     const micBtn = document.getElementById("call-mic-toggle-btn");
@@ -3820,6 +3935,7 @@ function endSecretCall(notifyPartner = true) {
     const camIcon = document.getElementById("call-cam-icon");
 
     if (modal) modal.classList.add("hide");
+    if (incomingModal) incomingModal.classList.add("hide");
     if (localVideo) { localVideo.srcObject = null; localVideo.classList.add("hide"); }
     if (remoteVideo) { remoteVideo.srcObject = null; remoteVideo.classList.add("hide"); }
     if (micBtn) micBtn.classList.remove("active-off");
@@ -4041,6 +4157,35 @@ function setupCallListeners() {
             if (panicBtn) panicBtn.click();
         });
     }
+
+    // Incoming Call Modal Accept / Decline Buttons (Instant 1-tap answer)
+    const incomingAcceptBtn = document.getElementById("incoming-accept-btn");
+    const incomingDeclineBtn = document.getElementById("incoming-decline-btn");
+
+    if (incomingAcceptBtn) {
+        incomingAcceptBtn.addEventListener("click", () => {
+            stopRingingSound();
+            const incomingModal = document.getElementById("incoming-call-modal");
+            if (incomingModal) incomingModal.classList.add("hide");
+            if (window.pendingIncomingCall) {
+                const { callerId, callType } = window.pendingIncomingCall;
+                window.pendingIncomingCall = null;
+                answerIncomingSecretCall(callerId, callType);
+            }
+        });
+    }
+
+    if (incomingDeclineBtn) {
+        incomingDeclineBtn.addEventListener("click", () => {
+            stopRingingSound();
+            const incomingModal = document.getElementById("incoming-call-modal");
+            if (incomingModal) incomingModal.classList.add("hide");
+            window.pendingIncomingCall = null;
+            if (window.history && window.history.replaceState) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        });
+    }
 }
 
 function checkIncomingCallUrl() {
@@ -4050,18 +4195,24 @@ function checkIncomingCallUrl() {
 
     if (!callerId) return;
 
-    const love = document.getElementById("love-container");
-    const isUnlocked = love && !love.classList.contains("hide");
+    window.pendingIncomingCall = { callerId, callType };
 
-    if (isUnlocked) {
-        answerIncomingSecretCall(callerId, callType);
-    } else {
-        openUnlockModal();
-        const hint = document.querySelector(".modal-hint");
-        if (hint) {
-            hint.innerHTML = `<span style="color:#f472b6; font-weight:600;">📞 Incoming Secret Call from ${CONFIG.partnerName}!</span><br>Enter passcode to answer:`;
+    const incomingModal = document.getElementById("incoming-call-modal");
+    const callerNameEl = document.getElementById("incoming-caller-name");
+    const callTypeLabel = document.getElementById("incoming-call-type-label");
+    const avatarEmoji = document.getElementById("incoming-avatar-emoji");
+
+    const isVideo = callType === 'video';
+    if (incomingModal) {
+        if (callerNameEl) callerNameEl.textContent = `${CONFIG.partnerName} 🐱`;
+        if (avatarEmoji) avatarEmoji.textContent = "🐱";
+        if (callTypeLabel) {
+            callTypeLabel.textContent = `Incoming Secret ${isVideo ? 'Video' : 'Voice'} Call... ${isVideo ? '📹' : '📞'}`;
         }
-        window.pendingIncomingCall = { callerId, callType };
+        incomingModal.classList.remove("hide");
+        startRingingSound();
+    } else {
+        answerIncomingSecretCall(callerId, callType);
     }
 }
 
