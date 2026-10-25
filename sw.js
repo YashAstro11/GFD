@@ -1,5 +1,5 @@
-// StudyFlow / Love Space Offline Service Worker (v2.6)
-const CACHE_NAME = 'studyflow-cache-v2.6';
+// StudyFlow / Love Space Offline Service Worker (v3.0)
+const CACHE_NAME = 'studyflow-cache-v3.0';
 const PRECACHE_ASSETS = [
     '/',
     '/index.html',
@@ -110,12 +110,37 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // 5. Static Assets (CSS, JS, Fonts, Local Stickers, Icons)
-    // Stale-While-Revalidate: Return cached version immediately (works 100% offline), update in background if online
+    // 5. Code Assets (JS, CSS) - Network First!
+    // Ensures newest code is fetched immediately when online; falls back to cache offline.
+    const isCodeAsset = url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
+    if (isCodeAsset) {
+        event.respondWith(
+            fetch(req)
+                .then((networkRes) => {
+                    if (networkRes && networkRes.status === 200) {
+                        const resClone = networkRes.clone();
+                        caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
+                    }
+                    return networkRes;
+                })
+                .catch(async () => {
+                    // Offline fallback: Serve cached code
+                    const cachedCode = await caches.match(req) || await caches.match(req, { ignoreSearch: true });
+                    if (cachedCode) return cachedCode;
+                    return new Response('/* Offline asset not cached */', {
+                        status: 503,
+                        headers: { 'Content-Type': 'application/javascript' }
+                    });
+                })
+        );
+        return;
+    }
+
+    // 6. Media, Stickers, Fonts, Icons - Stale-While-Revalidate
     event.respondWith(
         caches.match(req, { ignoreSearch: true }).then((cachedRes) => {
             if (cachedRes) {
-                // Fetch update in background if online
+                // Background update
                 fetch(req).then((networkRes) => {
                     if (networkRes && networkRes.status === 200) {
                         caches.open(CACHE_NAME).then((cache) => cache.put(req, networkRes));
@@ -124,7 +149,7 @@ self.addEventListener('fetch', (event) => {
                 return cachedRes;
             }
 
-            // Not yet in cache - fetch from network and store in cache
+            // Not yet in cache - fetch and store
             return fetch(req).then((networkRes) => {
                 if (networkRes && networkRes.status === 200) {
                     const resClone = networkRes.clone();
@@ -132,10 +157,9 @@ self.addEventListener('fetch', (event) => {
                 }
                 return networkRes;
             }).catch(async () => {
-                // Offline fallback for script/style/stickers
                 const fallback = await caches.match(req, { ignoreSearch: true });
                 if (fallback) return fallback;
-                return new Response('', { status: 408, statusText: 'Request timed out or offline' });
+                return new Response('', { status: 408, statusText: 'Offline or timeout' });
             });
         })
     );

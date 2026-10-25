@@ -15,17 +15,36 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <!-- Main Stylesheet -->
-    <link rel="stylesheet" href="styles.css?v=3.0">
-    <!-- Immediate PWA Service Worker Registration -->
+    <link rel="stylesheet" href="styles.css?v=3.1">
+    <!-- Immediate PWA Service Worker Registration & Cache Purge -->
     <script>
+        // Clean out stale caches immediately
+        if (window.caches) {
+            caches.keys().then(function(keys) {
+                keys.forEach(function(key) {
+                    if (key !== 'studyflow-cache-v3.0') {
+                        caches.delete(key);
+                    }
+                });
+            });
+        }
         if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            navigator.serviceWorker.register('/sw.js?v=3.0', { scope: '/' })
                 .then(function(reg) {
+                    reg.update();
                     console.log('StudyFlow Offline ServiceWorker active:', reg.scope);
                 })
                 .catch(function(err) {
                     console.warn('SW registration warning:', err);
                 });
+
+            var isReloading = false;
+            navigator.serviceWorker.addEventListener('controllerchange', function() {
+                if (!isReloading) {
+                    isReloading = true;
+                    window.location.reload();
+                }
+            });
         }
     </script>
 </head>
@@ -413,6 +432,6 @@
     <!-- LameJS MP3 Audio Encoder -->
     <script src="lame.min.js"></script>
     <!-- Main JavaScript Logic -->
-    <script src="app.js?v=4.7"></script>
+    <script src="app.js?v=5.0"></script>
 </body>
 </html>
